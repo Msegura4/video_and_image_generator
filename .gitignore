@@ -154,3 +154,7 @@ prompts/draft/
 *.ai
 *.sketch
 archives/outputs_tests_dune_backup_2026-01-12.zip
+
+# Configuration locale Claude Code
+.claude/
+settings.local.json
