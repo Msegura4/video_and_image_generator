@@ -1,0 +1,156 @@
+# Générateur de Vidéos Cinématiques AI - .gitignore
+# Créé le 2026-01-12
+
+# ========================================
+# Environnement virtuel Python
+# ========================================
+videogen_env/
+venv/
+env/
+ENV/
+.venv/
+*.pyc
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ========================================
+# Fichiers de configuration sensibles
+# ========================================
+.env
+.env.local
+.env.*.local
+*.key
+credentials.json
+*_secrets.json
+
+# Garder l'exemple de config
+!.env.example
+
+# ========================================
+# Fichiers système (macOS, Windows, Linux)
+# ========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# ========================================
+# Outputs - Vidéos et images générées
+# ========================================
+outputs/*.mp4
+outputs/*.json
+outputs/temp/*
+outputs/batch/*
+outputs/tests/*
+outputs/images/*.png
+outputs/images/*.jpg
+outputs/images/*.jpeg
+outputs/images/prompt_history.json
+outputs/images/image_to_video_presets.json
+
+# Garder les dossiers mais pas leur contenu
+!outputs/temp/.gitkeep
+!outputs/batch/.gitkeep
+!outputs/tests/.gitkeep
+!outputs/images/.gitkeep
+
+# ========================================
+# Fichiers temporaires
+# ========================================
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+
+# ========================================
+# Logs et debug
+# ========================================
+*.log
+logs/
+debug/
+*.debug
+
+# ========================================
+# IDE et éditeurs
+# ========================================
+.vscode/
+.idea/
+*.sublime-*
+*.code-workspace
+
+# ========================================
+# Archives et backups locaux
+# ========================================
+*.zip
+*.tar.gz
+*.rar
+*.7z
+backup*/
+old*/
+
+# Garder les archives importantes du projet
+!archives/*.zip
+
+# ========================================
+# Distribution / packaging Python
+# ========================================
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ========================================
+# Fichiers de test et coverage
+# ========================================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ========================================
+# Fichiers spécifiques au projet
+# ========================================
+# Anciennes versions de code (déjà archivées)
+versions/
+
+# Inspirations temporaires ou brouillons
+inspirations/temp/
+inspirations/draft/
+
+# Prompts en cours de test
+prompts/temp/
+prompts/draft/
+
+# ========================================
+# Fichiers volumineux
+# ========================================
+# Vidéos d'inspiration très lourdes (>100MB)
+*.mov
+*.avi
+
+# Images haute résolution brutes
+*.psd
+*.ai
+*.sketch
+archives/outputs_tests_dune_backup_2026-01-12.zip

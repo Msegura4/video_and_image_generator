@@ -1,0 +1,74 @@
+{
+  "preset": "dune_epic",
+  "analyzed_at": "2025-12-04T16:35:06.095919",
+  "image_count": 5,
+  "images": [
+    {
+      "filename": "premier-contact-1.jpg",
+      "dimensions": "908x485",
+      "aspect_ratio": 1.87,
+      "mode": "RGB",
+      "brightness": 0.41,
+      "is_dark": false,
+      "is_bright": false,
+      "dominant_colors_count": 5
+    },
+    {
+      "filename": "Capture d’écran 2025-12-02 à 11.56.18.png",
+      "dimensions": "1852x765",
+      "aspect_ratio": 2.42,
+      "mode": "RGBA",
+      "brightness": 0.62,
+      "is_dark": false,
+      "is_bright": false,
+      "dominant_colors_count": 5
+    },
+    {
+      "filename": "Capture d’écran 2025-12-02 à 11.57.22.png",
+      "dimensions": "1900x800",
+      "aspect_ratio": 2.38,
+      "mode": "RGBA",
+      "brightness": 0.15,
+      "is_dark": true,
+      "is_bright": false,
+      "dominant_colors_count": 5
+    },
+    {
+      "filename": "Capture d’écran 2025-12-02 à 11.55.08.png",
+      "dimensions": "1791x736",
+      "aspect_ratio": 2.43,
+      "mode": "RGBA",
+      "brightness": 0.81,
+      "is_dark": false,
+      "is_bright": true,
+      "dominant_colors_count": 5
+    },
+    {
+      "filename": "Capture d’écran 2025-12-04 à 15.35.41.png",
+      "dimensions": "482x750",
+      "aspect_ratio": 0.64,
+      "mode": "RGBA",
+      "brightness": 0.56,
+      "is_dark": false,
+      "is_bright": false,
+      "dominant_colors_count": 5
+    }
+  ],
+  "style_keywords": [
+    "cinematic wide composition"
+  ],
+  "suggestions": {
+    "lighting": [],
+    "atmosphere": [
+      "heat haze",
+      "dust particles in air",
+      "golden hour warmth"
+    ],
+    "composition": [
+      "ultra-wide angle",
+      "panoramic vista",
+      "epic scale"
+    ],
+    "color_grading": []
+  }
+}

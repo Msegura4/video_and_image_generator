@@ -1,0 +1,7 @@
+Copyright (c) 2026 Mathias Segura
+
+Tous droits réservés.
+
+Ce code est la propriété exclusive de l'auteur.
+Toute utilisation, copie, modification ou distribution
+sans autorisation écrite est strictement interdite.

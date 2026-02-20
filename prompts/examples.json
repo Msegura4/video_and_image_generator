@@ -1,0 +1,26 @@
+[
+  {
+    "preset": "dune_epic",
+    "duration": 5
+  },
+  {
+    "prompt": "Massive alien pyramid structure rising from pink desert landscape",
+    "preset": "brutalist_architecture",
+    "duration": 10
+  },
+  {
+    "prompt": "Black elliptical spacecraft hovering silently above misty ocean at dawn",
+    "preset": "arrival_minimal",
+    "duration": 5
+  },
+  {
+    "prompt": "Lone astronaut in white suit standing at entrance of colossal brutalist building",
+    "preset": "human_contemplative",
+    "duration": 5
+  },
+  {
+    "prompt": "Spiraling cosmic wormhole with swirling clouds and radiating light beams",
+    "preset": "portal_tunnel",
+    "duration": 10
+  }
+]

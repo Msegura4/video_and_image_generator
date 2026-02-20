@@ -1,0 +1,37 @@
+{
+  "preset": "custom",
+  "analyzed_at": "2025-12-04T11:22:08.315851",
+  "image_count": 1,
+  "images": [
+    {
+      "filename": "Capture d’écran 2025-12-02 à 11.55.08.png",
+      "dimensions": "1791x736",
+      "aspect_ratio": 2.43,
+      "mode": "RGBA",
+      "brightness": 0.81,
+      "is_dark": false,
+      "is_bright": true,
+      "dominant_colors_count": 5
+    }
+  ],
+  "style_keywords": [
+    "high-key lighting",
+    "bright atmosphere",
+    "soft shadows",
+    "cinematic wide composition"
+  ],
+  "suggestions": {
+    "lighting": [
+      "bright diffused light",
+      "soft ambient lighting",
+      "ethereal glow"
+    ],
+    "atmosphere": [],
+    "composition": [
+      "ultra-wide angle",
+      "panoramic vista",
+      "epic scale"
+    ],
+    "color_grading": []
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "preset": "portal_tunnel",
+  "analyzed_at": "2025-12-04T16:14:29.142673",
+  "image_count": 7,
+  "images": [
+    {
+      "filename": "Capture d’écran 2025-12-04 à 13.18.24.png",
+      "dimensions": "449x766",
+      "aspect_ratio": 0.59,
+      "mode": "RGBA",
+      "brightness": 0.43,
+      "is_dark": false,
+      "is_bright": false,
+      "dominant_colors_count": 5
+    },
+    {
+      "filename": "Capture d’écran 2025-12-04 à 14.49.53.png",
+      "dimensions": "477x732",
+      "aspect_ratio": 0.65,
+      "mode": "RGBA",
+      "brightness": 0.36,
+      "is_dark": true,
+      "is_bright": false,
+      "dominant_colors_count": 5
+    },
+    {
+      "filename": "Capture d’écran 2025-12-04 à 16.05.25.png",
+      "dimensions": "481x728",
+      "aspect_ratio": 0.66,
+      "mode": "RGBA",
+      "brightness": 0.55,
+      "is_dark": false,
+      "is_bright": false,
+      "dominant_colors_count": 5
+    },
+    {
+      "filename": "Capture d’écran 2025-12-04 à 15.35.41.png",
+      "dimensions": "482x750",
+      "aspect_ratio": 0.64,
+      "mode": "RGBA",
+      "brightness": 0.56,
+      "is_dark": false,
+      "is_bright": false,
+      "dominant_colors_count": 5
+    },
+    {
+      "filename": "Capture d’écran 2025-12-04 à 13.17.55.png",
+      "dimensions": "461x755",
+      "aspect_ratio": 0.61,
+      "mode": "RGBA",
+      "brightness": 0.4,
+      "is_dark": false,
+      "is_bright": false,
+      "dominant_colors_count": 5
+    },
+    {
+      "filename": "Capture d’écran 2025-11-26 à 14.50.57.png",
+      "dimensions": "408x691",
+      "aspect_ratio": 0.59,
+      "mode": "RGBA",
+      "brightness": 0.34,
+      "is_dark": true,
+      "is_bright": false,
+      "dominant_colors_count": 5
+    },
+    {
+      "filename": "Capture d’écran 2025-12-04 à 13.20.17.png",
+      "dimensions": "458x763",
+      "aspect_ratio": 0.6,
+      "mode": "RGBA",
+      "brightness": 0.45,
+      "is_dark": false,
+      "is_bright": false,
+      "dominant_colors_count": 5
+    }
+  ],
+  "style_keywords": [],
+  "suggestions": {
+    "lighting": [
+      "moody lighting",
+      "soft shadows",
+      "atmospheric haze"
+    ],
+    "atmosphere": [],
+    "composition": [],
+    "color_grading": []
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "preset": "custom",
+  "analyzed_at": "2025-12-04T09:53:20.204517",
+  "video_count": 1,
+  "videos": [
+    {
+      "filename": "inspiration pkanètes.MP4",
+      "duration_seconds": 76.13,
+      "fps": 30.0,
+      "resolution": "1080x1920",
+      "aspect_ratio": 0.56,
+      "total_frames": 2284,
+      "camera": {
+        "average_horizontal": 0.024,
+        "average_vertical": 0.033,
+        "average_zoom": -0.01,
+        "std_horizontal": 0.125,
+        "std_vertical": 0.115,
+        "movement_speed": 0.041,
+        "speed_category": "very_slow",
+        "camera_movement_type": [
+          "subtle_movement"
+        ]
+      },
+      "pov": {
+        "dominant_pov": "first_person",
+        "probabilities": {
+          "first_person": 0,
+          "third_person": 0,
+          "aerial": 0,
+          "ground_level": 0,
+          "eye_level": 0
+        }
+      }
+    }
+  ],
+  "synthesis": {
+    "dominant_movements": [
+      "subtle_movement"
+    ],
+    "dominant_speed": "very_slow",
+    "dominant_pov": "first_person",
+    "movement_variety": 1,
+    "all_movements": {
+      "subtle_movement": 1
+    }
+  },
+  "camera_suggestions": {
+    "camera_movement": {
+      "description": "very slow subtle_movement",
+      "pov_description": "first-person perspective"
+    },
+    "kling_params": {
+      "type": "simple",
+      "horizontal": 0,
+      "vertical": 0,
+      "zoom": 0,
+      "pan": 0,
+      "tilt": 0,
+      "roll": 0
+    }
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "preset": "dune_epic",
+  "analyzed_at": "2025-12-04T16:56:44.225065",
+  "video_count": 2,
+  "videos": [
+    {
+      "filename": "test_preset1_promptmodified3.mp4",
+      "duration_seconds": 5.04,
+      "fps": 24.0,
+      "resolution": "1920x1080",
+      "aspect_ratio": 1.78,
+      "total_frames": 121,
+      "camera": {
+        "average_horizontal": -0.106,
+        "average_vertical": 0.307,
+        "average_zoom": -0.005,
+        "std_horizontal": 0.033,
+        "std_vertical": 0.032,
+        "movement_speed": 0.325,
+        "speed_category": "very_slow",
+        "camera_movement_type": [
+          "static_shot"
+        ]
+      },
+      "pov": {
+        "dominant_pov": "first_person",
+        "probabilities": {
+          "first_person": 0,
+          "third_person": 0,
+          "aerial": 0,
+          "ground_level": 0,
+          "eye_level": 0
+        }
+      }
+    },
+    {
+      "filename": "dune_epic_1764862800.mp4",
+      "duration_seconds": 5.04,
+      "fps": 24.0,
+      "resolution": "1920x1080",
+      "aspect_ratio": 1.78,
+      "total_frames": 121,
+      "camera": {
+        "average_horizontal": -0.147,
+        "average_vertical": 0.427,
+        "average_zoom": -0.004,
+        "std_horizontal": 0.03,
+        "std_vertical": 0.052,
+        "movement_speed": 0.452,
+        "speed_category": "very_slow",
+        "camera_movement_type": [
+          "static_shot"
+        ]
+      },
+      "pov": {
+        "dominant_pov": "first_person",
+        "probabilities": {
+          "first_person": 0,
+          "third_person": 0,
+          "aerial": 0,
+          "ground_level": 0,
+          "eye_level": 0
+        }
+      }
+    }
+  ],
+  "synthesis": {
+    "dominant_movements": [
+      "static_shot"
+    ],
+    "dominant_speed": "very_slow",
+    "dominant_pov": "first_person",
+    "movement_variety": 1,
+    "all_movements": {
+      "static_shot": 2
+    }
+  },
+  "camera_suggestions": {
+    "camera_movement": {
+      "description": "very slow static camera",
+      "pov_description": "first-person perspective"
+    },
+    "kling_params": {
+      "type": "simple",
+      "horizontal": 0,
+      "vertical": 0,
+      "zoom": 0,
+      "pan": 0,
+      "tilt": 0,
+      "roll": 0
+    }
+  }
+}
