@@ -99,7 +99,7 @@ backup*/
 old*/
 
 # Garder les archives importantes du projet
-!archives/*.zip
+archives/
 
 # ========================================
 # Distribution / packaging Python
