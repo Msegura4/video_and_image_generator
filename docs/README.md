@@ -1,10 +1,10 @@
-# 📚 Documentation
+# Documentation
 
 Documentation organisée du Générateur de Vidéos Cinématiques AI.
 
 ---
 
-## 📂 Structure
+## Structure
 
 ```
 docs/
@@ -16,7 +16,7 @@ docs/
 
 ---
 
-## 🚀 GUIDES UTILISATEUR
+## GUIDES UTILISATEUR
 
 ### **guides/GUIDE_PIAPI.md**
 Configuration et utilisation de l'API PiAPI pour accéder à Kling AI.
@@ -69,7 +69,7 @@ Analyser vos vidéos générées et améliorer les résultats.
 
 ---
 
-## 🔧 GUIDES D'INSTALLATION
+## GUIDES D'INSTALLATION
 
 ### **installation/INSTALL_MAC.md**
 Installation complète sur macOS.
@@ -94,7 +94,7 @@ Installation spécifique pour le mode Image-to-Video Extend.
 
 ---
 
-## 📖 DOCUMENTATION DE RÉFÉRENCE
+## DOCUMENTATION DE RÉFÉRENCE
 
 ### **reference/REFERENCE_ANALYSIS.md**
 Analyse complète de vos images de référence.
@@ -119,7 +119,7 @@ Solutions aux erreurs "Task Failed" de l'API.
 
 ---
 
-## 🎯 PAR OÙ COMMENCER ?
+## PAR OÙ COMMENCER ?
 
 ### Débutant complet
 1. `installation/INSTALL_MAC.md` - Installation
@@ -138,7 +138,7 @@ Solutions aux erreurs "Task Failed" de l'API.
 
 ---
 
-## 🆘 Problèmes ?
+## Problèmes ?
 
 1. Consultez `installation/GUIDE_INSTALLATION_CORRIGES.md`
 2. Vérifiez `reference/SOLUTION_TASK_FAILED.md`
@@ -147,7 +147,7 @@ Solutions aux erreurs "Task Failed" de l'API.
 
 ---
 
-## 📝 Structure d'un guide
+## Structure d'un guide
 
 Chaque guide suit cette structure :
 - **Introduction** : Objectif du guide
