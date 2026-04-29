@@ -134,9 +134,14 @@ htmlcov/
 # Anciennes versions de code (déjà archivées)
 versions/
 
-# Inspirations temporaires ou brouillons
-inspirations/temp/
-inspirations/draft/
+# Données locales du projet (non versionnées)
+projects.json
+
+# Outputs générés par l'API FastAPI
+api/outputs/
+
+# Inspirations (fichiers lourds, données locales)
+inspirations/
 
 # Prompts en cours de test
 prompts/temp/
