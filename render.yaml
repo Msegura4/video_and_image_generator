@@ -1,0 +1,36 @@
+services:
+  # ── Backend FastAPI ──────────────────────────────────────────────────────────
+  - type: web
+    name: rose-panama-api
+    runtime: python
+    rootDir: api
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PIAPI_API_KEY
+        sync: false          # à renseigner dans le dashboard Render
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false          # ex: https://rose-panama.onrender.com
+
+  # ── Frontend React (Vite) ────────────────────────────────────────────────────
+  - type: web
+    name: rose-panama
+    runtime: static
+    rootDir: react-app
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false          # ex: https://rose-panama-api.onrender.com
+      - key: VITE_APP_PASSWORD
+        sync: false          # mot de passe d'accès à l'application
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
