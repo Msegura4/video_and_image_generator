@@ -123,7 +123,29 @@ def check_task(task_id: str):
                     video_info.get("resource_without_watermark")
                     or video_info.get("resource")
                 )
+                # Upload vers Cloudinary pour persistance et affichage dans Créations
+                if video_url and _cloudinary_configured():
+                    try:
+                        _cloudinary.config(
+                            cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+                            api_key=os.getenv("CLOUDINARY_API_KEY"),
+                            api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+                        )
+                        result = _cld_uploader.upload(
+                            video_url,
+                            folder="rose-panama/videos/image_to_video",
+                            resource_type="video",
+                        )
+                        video_url = result["secure_url"]
+                        print(f"[kling] Vidéo uploadée sur Cloudinary : {video_url}")
+                    except Exception as e:
+                        print(f"[kling] Cloudinary upload failed: {e}")
                 response["video_url"] = video_url
+
+        if state == "failed":
+            error_msg = status_data.get("error") or status_data.get("message") or str(status_data)
+            print(f"[kling] Task {task_id} failed: {error_msg}")
+            response["error"] = error_msg
 
         return response
 
@@ -142,8 +164,29 @@ def _run_flux_generation(job_id: str, prompt: str, model: str, width: int, heigh
         from flux_image_generator import FluxImageGenerator
         generator = FluxImageGenerator()
         image_path = generator.generate_image(prompt, model, width, height)
+
+        # Upload vers Cloudinary pour persistance
+        image_url = None
+        if _cloudinary_configured():
+            try:
+                _cloudinary.config(
+                    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+                    api_key=os.getenv("CLOUDINARY_API_KEY"),
+                    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+                )
+                result = _cld_uploader.upload(
+                    str(image_path),
+                    folder="rose-panama/images/flux",
+                    resource_type="image",
+                )
+                image_url = result["secure_url"]
+                print(f"[flux] Image uploadée sur Cloudinary : {image_url}")
+            except Exception as e:
+                print(f"[flux] Cloudinary upload failed: {e}")
+
         background_tasks_store[job_id]["status"] = "completed"
         background_tasks_store[job_id]["image_path"] = str(image_path)
+        background_tasks_store[job_id]["image_url"] = image_url or f"/api/serve/{image_path}"
     except Exception as e:
         background_tasks_store[job_id]["status"] = "failed"
         background_tasks_store[job_id]["error"] = str(e)
@@ -186,8 +229,12 @@ def check_job(job_id: str):
     }
 
     if job["status"] == "completed":
+        if job.get("image_url"):
+            response["image_url"] = job["image_url"]
         if job.get("image_path"):
             response["image_path"] = job["image_path"]
+        if job.get("video_url"):
+            response["video_url"] = job["video_url"]
         if job.get("video_path"):
             response["video_path"] = job["video_path"]
 
@@ -214,8 +261,28 @@ def _run_extend_video(job_id: str, video_path: str, continuation_prompt: Optiona
             duration=duration,
             mode=mode
         )
+        # Upload vers Cloudinary pour persistance
+        video_url_out = None
+        if _cloudinary_configured():
+            try:
+                _cloudinary.config(
+                    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+                    api_key=os.getenv("CLOUDINARY_API_KEY"),
+                    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+                )
+                result = _cld_uploader.upload(
+                    str(extended_path),
+                    folder="rose-panama/videos/extended",
+                    resource_type="video",
+                )
+                video_url_out = result["secure_url"]
+                print(f"[extend] Vidéo uploadée sur Cloudinary : {video_url_out}")
+            except Exception as e:
+                print(f"[extend] Cloudinary upload failed: {e}")
+
         background_tasks_store[job_id]["status"] = "completed"
         background_tasks_store[job_id]["video_path"] = str(extended_path)
+        background_tasks_store[job_id]["video_url"] = video_url_out or f"/api/serve/{extended_path}"
     except Exception as e:
         background_tasks_store[job_id]["status"] = "failed"
         background_tasks_store[job_id]["error"] = str(e)
@@ -229,24 +296,36 @@ def _run_extend_video(job_id: str, video_path: str, continuation_prompt: Optiona
 @app.post("/api/extend-video")
 async def extend_video(
     background_tasks: BackgroundTasks,
-    video: UploadFile = File(...),
+    video: Optional[UploadFile] = File(None),
+    video_url: Optional[str] = Form(None),
     continuation_prompt: Optional[str] = Form(None),
     duration: int = Form(5),
     mode: str = Form("professional"),
 ):
     """
     Étend une vidéo via image-to-video chain.
+    Accepte un fichier uploadé OU une URL (Cloudinary, etc.).
     Retourne un job_id à poller via /api/job/{job_id}.
     """
     temp_dir = ROOT_DIR / "outputs" / "temp"
     temp_dir.mkdir(parents=True, exist_ok=True)
 
-    suffix = Path(video.filename).suffix or ".mp4"
-    tmp_path = temp_dir / f"upload_{int(time.time())}{suffix}"
+    tmp_path = temp_dir / f"upload_{int(time.time())}.mp4"
 
-    content = await video.read()
-    with open(tmp_path, "wb") as f:
-        f.write(content)
+    if video_url:
+        # Téléchargement serveur-side (évite les problèmes CORS côté frontend)
+        r = _requests.get(video_url, timeout=60)
+        r.raise_for_status()
+        with open(tmp_path, "wb") as f:
+            f.write(r.content)
+    elif video:
+        suffix = Path(video.filename).suffix or ".mp4"
+        tmp_path = temp_dir / f"upload_{int(time.time())}{suffix}"
+        content = await video.read()
+        with open(tmp_path, "wb") as f:
+            f.write(content)
+    else:
+        raise HTTPException(status_code=400, detail="Fournir un fichier vidéo ou une URL.")
 
     cost = 0.33 if duration == 5 else 0.66
     if mode == "standard":
@@ -740,23 +819,78 @@ def delete_preset(preset_name: str):
 
 import json as _json
 import uuid as _uuid
+import base64 as _base64
+import requests as _requests
 from datetime import datetime as _dt
 from fastapi.responses import FileResponse
 from fastapi import Body
+import cloudinary as _cloudinary
+import cloudinary.uploader as _cld_uploader
 
 PROJECTS_FILE = ROOT_DIR / "projects.json"
+_CLD_PROJECTS_ID = "rose-panama/projects-db"
+
+# Cache mémoire — évite les allers-retours Cloudinary entre chaque lecture/écriture
+_projects_cache = None  # type: ignore
+
+
+def _cloudinary_configured() -> bool:
+    return bool(os.getenv("CLOUDINARY_CLOUD_NAME"))
 
 
 def _load_projects() -> dict:
-    if PROJECTS_FILE.exists():
-        with open(PROJECTS_FILE, "r", encoding="utf-8") as f:
-            return _json.load(f)
-    return {"projects": {}}
+    """Charge les projets depuis le cache mémoire, Cloudinary (prod) ou fichier local (dev)."""
+    global _projects_cache
+    if _projects_cache is not None:
+        return _projects_cache
+
+    if _cloudinary_configured():
+        try:
+            cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
+            url = f"https://res.cloudinary.com/{cloud_name}/raw/upload/{_CLD_PROJECTS_ID}"
+            r = _requests.get(url, timeout=10, params={"_t": int(time.time())})
+            if r.status_code == 200:
+                _projects_cache = r.json()
+                return _projects_cache
+        except Exception as e:
+            print(f"[projects] Cloudinary load failed: {e}")
+        _projects_cache = {"projects": {}}
+        return _projects_cache
+    else:
+        if PROJECTS_FILE.exists():
+            with open(PROJECTS_FILE, "r", encoding="utf-8") as f:
+                _projects_cache = _json.load(f)
+        else:
+            _projects_cache = {"projects": {}}
+        return _projects_cache
 
 
 def _save_projects(data: dict):
-    with open(PROJECTS_FILE, "w", encoding="utf-8") as f:
-        _json.dump(data, f, ensure_ascii=False, indent=2)
+    """Sauvegarde dans le cache mémoire + Cloudinary (prod) ou fichier local (dev)."""
+    global _projects_cache
+    _projects_cache = data  # Mise à jour immédiate du cache
+
+    if _cloudinary_configured():
+        try:
+            _cloudinary.config(
+                cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+                api_key=os.getenv("CLOUDINARY_API_KEY"),
+                api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+            )
+            json_bytes = _json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+            b64 = _base64.b64encode(json_bytes).decode("utf-8")
+            _cld_uploader.upload(
+                f"data:application/json;base64,{b64}",
+                resource_type="raw",
+                public_id=_CLD_PROJECTS_ID,
+                overwrite=True,
+                invalidate=True,
+            )
+        except Exception as e:
+            print(f"[projects] Cloudinary save failed: {e}")
+    else:
+        with open(PROJECTS_FILE, "w", encoding="utf-8") as f:
+            _json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 def _default_steps():

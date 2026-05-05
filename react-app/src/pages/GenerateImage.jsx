@@ -166,7 +166,7 @@ export default function GenerateImage() {
         const d = await r.json()
         if (d.status === 'completed') {
           clearInterval(interval)
-          setImagePath(d.image_path)
+          setImagePath(d.image_url || `${API}/api/serve/${d.image_path}`)
           setStatus('done')
         } else if (d.status === 'failed') {
           clearInterval(interval)
@@ -441,7 +441,7 @@ export default function GenerateImage() {
           {status === 'done' && imagePath && (
             <div className="image-result">
               <img
-                src={`${API}/outputs/images/${imagePath.split('/').pop()}`}
+                src={imagePath}
                 alt="generated"
                 onError={(e) => { e.target.style.display = 'none' }}
               />

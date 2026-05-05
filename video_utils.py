@@ -503,78 +503,72 @@ class VideoUtils:
             print(f"⚠️  imgbb.com échoué : {e}")
             raise Exception(f"Erreur upload imgbb : {e}")
     
-    def upload_image_with_fallback(self, image_path: str) -> str:
+    def upload_image_to_cloudinary(self, image_path: str) -> str:
         """
-        Upload avec fallback automatique sur plusieurs services.
-        
-        Essaie dans l'ordre (optimisé pour compatibilité API) :
-        1. imgur.com (le plus fiable pour APIs externes)
-        2. imgbb.com (bonne alternative)
-        3. tmpfiles.org (7 jours)
-        4. catbox.moe (parfois bloqué par APIs)
-        5. 0x0.st (parfois bloqué)
-        
+        Upload vers Cloudinary (solution principale).
+
         Args:
             image_path: Chemin de l'image
-            
+
+        Returns:
+            URL publique Cloudinary
+        """
+        print(f"\n📤 Upload image vers Cloudinary...")
+        print(f"   Fichier : {Path(image_path).name}")
+
+        import cloudinary
+        import cloudinary.uploader
+
+        cloudinary.config(
+            cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME"),
+            api_key=os.environ.get("CLOUDINARY_API_KEY"),
+            api_secret=os.environ.get("CLOUDINARY_API_SECRET"),
+        )
+
+        result = cloudinary.uploader.upload(
+            image_path,
+            folder="rose-panama/images/uploads",
+            resource_type="image",
+        )
+        url = result["secure_url"]
+        print(f"✅ Image uploadée sur Cloudinary : {url}")
+        return url
+
+    def upload_image_with_fallback(self, image_path: str) -> str:
+        """
+        Upload avec Cloudinary en priorité, fallback sur services tiers.
+
+        Args:
+            image_path: Chemin de l'image
+
         Returns:
             URL publique
         """
-        print("\n📤 UPLOAD IMAGE (avec fallback automatique)")
+        print("\n📤 UPLOAD IMAGE")
         print("="*70)
-        
-        # Service 1 : imgur.com (le MEILLEUR pour APIs)
+
+        # Service principal : Cloudinary
         try:
-            return self.upload_image_to_imgur(image_path)
+            return self.upload_image_to_cloudinary(image_path)
         except Exception as e:
-            print(f"⚠️  Service 1 échoué, essai service 2...")
-        
-        # Service 2 : imgbb.com (très bon aussi)
-        try:
-            return self.upload_image_to_imgbb(image_path)
-        except Exception as e:
-            print(f"⚠️  Service 2 échoué, essai service 3...")
-        
-        # Service 3 : tmpfiles.org
-        try:
-            return self.upload_image_to_tmpfiles(image_path)
-        except Exception as e:
-            print(f"⚠️  Service 3 échoué, essai service 4...")
-        
-        # Service 4 : catbox.moe
-        try:
-            return self.upload_image_to_catbox(image_path)
-        except Exception as e:
-            print(f"⚠️  Service 4 échoué, essai service 5...")
-        
-        # Service 5 : 0x0.st
-        try:
-            return self.upload_image_to_0x0(image_path)
-        except Exception as e:
-            print(f"⚠️  Service 5 échoué")
-        
-        # Si tous échouent
-        print("\n" + "="*70)
-        print("❌ TOUS LES SERVICES D'UPLOAD ONT ÉCHOUÉ")
-        print("="*70)
-        print("\n💡 Solutions alternatives :")
-        print("\n1. Upload manuel sur imgur (RECOMMANDÉ pour PiAPI) :")
-        print("   • Ouvrez https://imgur.com/upload")
-        print("   • Uploadez le fichier :")
-        print(f"     {image_path}")
-        print("   • Clic droit sur l'image → 'Copy image address'")
-        print("   • L'URL doit finir par .jpg ou .png")
-        print()
-        
-        manual_url = input("Collez l'URL de votre image (ou Entrée pour annuler) : ").strip()
-        
-        if manual_url and manual_url.startswith('http'):
-            print(f"✅ URL manuelle acceptée : {manual_url}")
-            return manual_url
-        
+            print(f"⚠️  Cloudinary échoué : {e}, essai services alternatifs...")
+
+        # Fallbacks tiers
+        for name, method in [
+            ("imgur.com",    self.upload_image_to_imgur),
+            ("imgbb.com",    self.upload_image_to_imgbb),
+            ("tmpfiles.org", self.upload_image_to_tmpfiles),
+            ("catbox.moe",   self.upload_image_to_catbox),
+            ("0x0.st",       self.upload_image_to_0x0),
+        ]:
+            try:
+                return method(image_path)
+            except Exception as e:
+                print(f"⚠️  {name} échoué : {e}")
+
         raise Exception(
-            "Impossible d'uploader l'image. "
-            "Uploadez manuellement sur https://imgur.com/upload et relancez."
+            "Impossible d'uploader l'image vers Cloudinary ou les services alternatifs. "
+            "Vérifiez vos variables d'environnement CLOUDINARY_*."
         )
     
     def upload_image_to_fileio(self, image_path: str) -> str:

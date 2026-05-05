@@ -287,15 +287,13 @@ export default function ExtendVideo() {
     setErrorMsg('')
 
     try {
-      let videoFile = video
-      if (!videoFile && videoUrl) {
-        const res = await fetch(videoUrl)
-        const blob = await res.blob()
-        videoFile = new File([blob], 'source.mp4', { type: blob.type || 'video/mp4' })
-      }
-
       const body = new FormData()
-      body.append('video', videoFile)
+      if (video) {
+        body.append('video', video)
+      } else if (videoUrl) {
+        // Envoyer l'URL — le backend télécharge la vidéo (évite CORS)
+        body.append('video_url', videoUrl)
+      }
       if (prompt.trim()) body.append('continuation_prompt', prompt)
       body.append('duration', duration)
       body.append('mode', mode)

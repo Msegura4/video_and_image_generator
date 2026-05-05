@@ -792,9 +792,9 @@ function StepImage({ step, evoId, projectId, direction, onDone }) {
           if (pd.status === 'completed') {
             clearInterval(pollRef.current)
             const lp = pd.image_path
-            const url = `${API}/api/serve${lp.startsWith('/') ? lp : '/' + lp}`
+            const url = pd.image_url || `${API}/api/serve${lp.startsWith('/') ? lp : '/' + lp}`
             await saveStep({ status: 'completed', local_path: lp, url, completed_at: new Date().toISOString() })
-            await addToProjectMedia(projectId, { url, resource_type: 'image', label: lp.split('/').pop() })
+            await addToProjectMedia(projectId, { url, resource_type: 'image', label: lp ? lp.split('/').pop() : 'image' })
             setRunning(false)
           } else if (pd.status === 'failed') {
             clearInterval(pollRef.current)
@@ -1118,12 +1118,9 @@ function StepExtend({ step, videoStep, evoId, projectId, direction, onDone }) {
     await saveStep({ status: 'in_progress', prompt: prompt.trim() || null })
 
     try {
-      const vidResp = await fetch(effectiveSource)
-      const vidBlob = await vidResp.blob()
-      const vidFile = new File([vidBlob], 'source.mp4', { type: 'video/mp4' })
-
       const body = new FormData()
-      body.append('video', vidFile)
+      // Envoyer l'URL directement — le backend télécharge la vidéo (évite CORS)
+      body.append('video_url', effectiveSource)
       // DA complète (colorimétrie + ambiance + caméra) fusionnée dans le continuation_prompt
       const extFinalPrompt = withDA(prompt, direction)
       if (extFinalPrompt) body.append('continuation_prompt', extFinalPrompt)
@@ -1142,9 +1139,9 @@ function StepExtend({ step, videoStep, evoId, projectId, direction, onDone }) {
           if (pd.status === 'completed') {
             clearInterval(pollRef.current)
             const lp = pd.video_path
-            const url = `${API}/api/serve${lp.startsWith('/') ? lp : '/' + lp}`
+            const url = pd.video_url || `${API}/api/serve${lp.startsWith('/') ? lp : '/' + lp}`
             await saveStep({ status: 'completed', url, completed_at: new Date().toISOString() })
-            await addToProjectMedia(projectId, { url, resource_type: 'video', label: lp.split('/').pop() })
+            await addToProjectMedia(projectId, { url, resource_type: 'video', label: lp ? lp.split('/').pop() : 'video' })
             setRunning(false)
           } else if (pd.status === 'failed') {
             clearInterval(pollRef.current)
@@ -1350,9 +1347,9 @@ function PipelineView({ evo, projectId, direction, onUpdate }) {
 
         const res1 = await pollJob(d1.job_id)
         const lp = res1.image_path
-        imageUrl = `${API}/api/serve${lp.startsWith('/') ? lp : '/' + lp}`
+        imageUrl = res1.image_url || `${API}/api/serve${lp.startsWith('/') ? lp : '/' + lp}`
         await saveStep('image', { status: 'completed', local_path: lp, url: imageUrl, completed_at: new Date().toISOString() })
-        await addToProjectMedia(projectId, { url: imageUrl, resource_type: 'image', label: lp.split('/').pop() })
+        await addToProjectMedia(projectId, { url: imageUrl, resource_type: 'image', label: lp ? lp.split('/').pop() : 'image' })
         onUpdate && onUpdate()
       }
 
@@ -1394,12 +1391,9 @@ function PipelineView({ evo, projectId, direction, onUpdate }) {
       onUpdate && onUpdate()
 
       const srcVidUrl = videoUrl || steps.img2video.url
-      const vidResp = await fetch(srcVidUrl)
-      const vidBlob = await vidResp.blob()
-      const vidFile = new File([vidBlob], 'source.mp4', { type: 'video/mp4' })
 
       const body3 = new FormData()
-      body3.append('video', vidFile)
+      body3.append('video_url', srcVidUrl)
       const extFinalPrompt = withDA(extPrompt, direction)
       if (extFinalPrompt) body3.append('continuation_prompt', extFinalPrompt)
       body3.append('duration', extDuration)
@@ -1412,9 +1406,9 @@ function PipelineView({ evo, projectId, direction, onUpdate }) {
 
       const res3 = await pollJob(d3.job_id)
       const lp3 = res3.video_path
-      const extUrl = `${API}/api/serve${lp3.startsWith('/') ? lp3 : '/' + lp3}`
+      const extUrl = res3.video_url || `${API}/api/serve${lp3.startsWith('/') ? lp3 : '/' + lp3}`
       await saveStep('extend', { status: 'completed', url: extUrl, completed_at: new Date().toISOString() })
-      await addToProjectMedia(projectId, { url: extUrl, resource_type: 'video', label: lp3.split('/').pop() })
+      await addToProjectMedia(projectId, { url: extUrl, resource_type: 'video', label: lp3 ? lp3.split('/').pop() : 'video' })
       onUpdate && onUpdate()
 
     } catch (e) {
