@@ -2,6 +2,13 @@ import { useState, useEffect } from 'react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+function getVideoPoster(videoUrl) {
+  if (!videoUrl?.includes('cloudinary.com')) return null
+  return videoUrl
+    .replace('/video/upload/', '/video/upload/so_0,w_400/')
+    .replace(/\.[^/.]+$/, '.jpg')
+}
+
 // ── Assign Modal ──────────────────────────────
 
 function AssignModal({ item, projects, onClose }) {
@@ -141,6 +148,7 @@ function DeleteButton({ onDelete }) {
 function VideoCard({ video, onDelete, projects }) {
   const [playing, setPlaying]       = useState(false)
   const [showAssign, setShowAssign] = useState(false)
+  const posterUrl = getVideoPoster(video.url)
 
   return (
     <>
@@ -155,10 +163,14 @@ function VideoCard({ video, onDelete, projects }) {
             />
           ) : (
             <div
-              style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+              style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}
               onClick={() => setPlaying(true)}
             >
+              {posterUrl && (
+                <img src={posterUrl} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+              )}
               <div style={{
+                position: 'relative',
                 width: 44, height: 44, borderRadius: '50%',
                 background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',

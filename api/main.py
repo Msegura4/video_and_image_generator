@@ -125,21 +125,12 @@ def check_task(task_id: str):
                 )
                 # Upload vers Cloudinary pour persistance et affichage dans Créations
                 if video_url and _cloudinary_configured():
-                    try:
-                        _cloudinary.config(
-                            cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
-                            api_key=os.getenv("CLOUDINARY_API_KEY"),
-                            api_secret=os.getenv("CLOUDINARY_API_SECRET"),
-                        )
-                        result = _cld_uploader.upload(
-                            video_url,
-                            folder="rose-panama/videos/image_to_video",
-                            resource_type="video",
-                        )
-                        video_url = result["secure_url"]
-                        print(f"[kling] Vidéo uploadée sur Cloudinary : {video_url}")
-                    except Exception as e:
-                        print(f"[kling] Cloudinary upload failed: {e}")
+                    video_url = _cloudinary_upload_with_retry(
+                        video_url,
+                        folder="rose-panama/videos/image_to_video",
+                        resource_type="video",
+                    )
+                    print(f"[kling] Vidéo uploadée sur Cloudinary : {video_url}")
                 response["video_url"] = video_url
 
         if state == "failed":
@@ -168,25 +159,16 @@ def _run_flux_generation(job_id: str, prompt: str, model: str, width: int, heigh
         # Upload vers Cloudinary pour persistance
         image_url = None
         if _cloudinary_configured():
-            try:
-                _cloudinary.config(
-                    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
-                    api_key=os.getenv("CLOUDINARY_API_KEY"),
-                    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
-                )
-                result = _cld_uploader.upload(
-                    str(image_path),
-                    folder="rose-panama/images/flux",
-                    resource_type="image",
-                )
-                image_url = result["secure_url"]
-                print(f"[flux] Image uploadée sur Cloudinary : {image_url}")
-            except Exception as e:
-                print(f"[flux] Cloudinary upload failed: {e}")
+            image_url = _cloudinary_upload_with_retry(
+                str(image_path),
+                folder="rose-panama/images/flux",
+                resource_type="image",
+            )
+            print(f"[flux] Image uploadée sur Cloudinary : {image_url}")
 
         background_tasks_store[job_id]["status"] = "completed"
         background_tasks_store[job_id]["image_path"] = str(image_path)
-        background_tasks_store[job_id]["image_url"] = image_url or f"/api/serve/{image_path}"
+        background_tasks_store[job_id]["image_url"] = image_url
     except Exception as e:
         background_tasks_store[job_id]["status"] = "failed"
         background_tasks_store[job_id]["error"] = str(e)
@@ -264,25 +246,16 @@ def _run_extend_video(job_id: str, video_path: str, continuation_prompt: Optiona
         # Upload vers Cloudinary pour persistance
         video_url_out = None
         if _cloudinary_configured():
-            try:
-                _cloudinary.config(
-                    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
-                    api_key=os.getenv("CLOUDINARY_API_KEY"),
-                    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
-                )
-                result = _cld_uploader.upload(
-                    str(extended_path),
-                    folder="rose-panama/videos/extended",
-                    resource_type="video",
-                )
-                video_url_out = result["secure_url"]
-                print(f"[extend] Vidéo uploadée sur Cloudinary : {video_url_out}")
-            except Exception as e:
-                print(f"[extend] Cloudinary upload failed: {e}")
+            video_url_out = _cloudinary_upload_with_retry(
+                str(extended_path),
+                folder="rose-panama/videos/extended",
+                resource_type="video",
+            )
+            print(f"[extend] Vidéo uploadée sur Cloudinary : {video_url_out}")
 
         background_tasks_store[job_id]["status"] = "completed"
         background_tasks_store[job_id]["video_path"] = str(extended_path)
-        background_tasks_store[job_id]["video_url"] = video_url_out or f"/api/serve/{extended_path}"
+        background_tasks_store[job_id]["video_url"] = video_url_out
     except Exception as e:
         background_tasks_store[job_id]["status"] = "failed"
         background_tasks_store[job_id]["error"] = str(e)
@@ -829,6 +802,27 @@ import cloudinary.uploader as _cld_uploader
 
 PROJECTS_FILE = ROOT_DIR / "projects.json"
 _CLD_PROJECTS_ID = "rose-panama/projects-db"
+
+
+def _cloudinary_upload_with_retry(source, folder: str, resource_type: str, max_retries: int = 3) -> str:
+    """Upload vers Cloudinary avec 3 tentatives et backoff exponentiel.
+    Lève une RuntimeError si toutes les tentatives échouent."""
+    _cloudinary.config(
+        cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+        api_key=os.getenv("CLOUDINARY_API_KEY"),
+        api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+    )
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            result = _cld_uploader.upload(source, folder=folder, resource_type=resource_type)
+            return result["secure_url"]
+        except Exception as erreur:
+            last_error = erreur
+            print(f"[cloudinary] Tentative {attempt + 1}/{max_retries} échouée : {erreur}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+    raise RuntimeError(f"Upload Cloudinary impossible après {max_retries} tentatives : {last_error}")
 
 # Cache mémoire — évite les allers-retours Cloudinary entre chaque lecture/écriture
 _projects_cache = None  # type: ignore

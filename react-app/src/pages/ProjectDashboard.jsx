@@ -3,6 +3,27 @@ import { useParams, useNavigate } from 'react-router-dom'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+function getCloudinaryThumb(url) {
+  if (!url?.includes('cloudinary.com')) return url
+  return url.replace('/image/upload/', '/image/upload/c_fill,h_300,w_300/')
+}
+
+function VideoPlayer({ src, style, controls, muted, onMouseEnter, onMouseLeave }) {
+  const [erreur, setErreur] = useState(false)
+  if (!src || erreur) {
+    return (
+      <div style={{ ...style, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-3)', color: 'var(--text-3)', fontSize: 11, textAlign: 'center', padding: 8 }}>
+        Vidéo non disponible
+      </div>
+    )
+  }
+  return (
+    <video style={style} controls={controls} muted={muted} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
+      <source src={src} type="video/mp4" onError={() => setErreur(true)} />
+    </video>
+  )
+}
+
 // ── Helpers ───────────────────────────────────
 
 // Convertit un code hex en nom de couleur descriptif pour les prompts IA
@@ -325,7 +346,7 @@ function MediaPickerModal({ projectId, type = 'image', onSelect, onClose }) {
                       >
                         <div style={{ aspectRatio: '1/1', overflow: 'hidden' }}>
                           {isVideo ? (
-                            <video src={url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted />
+                            <VideoPlayer src={url} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           ) : (
                             <img src={url} alt={label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
                           )}
@@ -360,7 +381,7 @@ function MediaPreview({ media, onRemove, label = 'Source', type = 'image' }) {
           background: 'var(--bg-3)', border: '1px solid var(--border)', flexShrink: 0,
         }}>
           {isVideo ? (
-            <video src={media.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted />
+            <VideoPlayer src={media.url} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           ) : (
             <img src={media.url} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           )}
@@ -997,7 +1018,7 @@ function StepImgToVideo({ step, imageStep, evoId, projectId, direction, onDone }
   if (step.status === 'completed' && step.url) {
     return (
       <div>
-        <video src={step.url} controls style={{ width: '100%', maxWidth: 240, borderRadius: 'var(--radius-sm)', marginBottom: 10, display: 'block' }} />
+        <VideoPlayer src={step.url} controls style={{ width: '100%', maxWidth: 240, borderRadius: 'var(--radius-sm)', marginBottom: 10, display: 'block' }} />
         {step.prompt && <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 8, fontStyle: 'italic' }}>"{step.prompt}"</div>}
         <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 12px', color: 'var(--accent)', borderColor: 'var(--accent)' }} onClick={reset}>
           Regénérer
@@ -1162,7 +1183,7 @@ function StepExtend({ step, videoStep, evoId, projectId, direction, onDone }) {
   if (step.status === 'completed' && step.url) {
     return (
       <div>
-        <video src={step.url} controls style={{ width: '100%', maxWidth: 240, borderRadius: 'var(--radius-sm)', marginBottom: 10, display: 'block' }} />
+        <VideoPlayer src={step.url} controls style={{ width: '100%', maxWidth: 240, borderRadius: 'var(--radius-sm)', marginBottom: 10, display: 'block' }} />
         {step.prompt && <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 8, fontStyle: 'italic' }}>"{step.prompt}"</div>}
         <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 12px', color: 'var(--accent)', borderColor: 'var(--accent)' }} onClick={reset}>
           Regénérer
@@ -1188,7 +1209,7 @@ function StepExtend({ step, videoStep, evoId, projectId, direction, onDone }) {
         {effectiveSource ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ width: 52, height: 52, borderRadius: 'var(--radius-sm)', overflow: 'hidden', background: 'var(--bg-3)', border: '1px solid var(--border)', flexShrink: 0 }}>
-              <video src={effectiveSource} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted />
+              <VideoPlayer src={effectiveSource} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <button className="btn btn-ghost" style={{ fontSize: 10, padding: '3px 10px' }} onClick={() => setShowPicker(true)}>
@@ -1441,11 +1462,11 @@ function PipelineView({ evo, projectId, direction, onUpdate }) {
           </div>
           <div>
             <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Vidéo</div>
-            <video src={steps.img2video.url} controls style={{ width: '100%', maxWidth: 200, borderRadius: 'var(--radius-sm)', display: 'block', marginBottom: 8 }} />
+            <VideoPlayer src={steps.img2video.url} controls style={{ width: '100%', maxWidth: 200, borderRadius: 'var(--radius-sm)', display: 'block', marginBottom: 8 }} />
           </div>
           <div>
             <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Extension</div>
-            <video src={steps.extend.url} controls style={{ width: '100%', maxWidth: 200, borderRadius: 'var(--radius-sm)', display: 'block', marginBottom: 8 }} />
+            <VideoPlayer src={steps.extend.url} controls style={{ width: '100%', maxWidth: 200, borderRadius: 'var(--radius-sm)', display: 'block', marginBottom: 8 }} />
           </div>
         </div>
       </div>
@@ -1563,7 +1584,7 @@ function PipelineView({ evo, projectId, direction, onUpdate }) {
             {s2 === 'completed' && <span style={{ fontSize: 9, color: 'var(--success)' }}>✓</span>}
           </div>
           {s2 === 'completed' && steps.img2video.url ? (
-            <video src={steps.img2video.url} controls style={{ width: '100%', maxWidth: 160, borderRadius: 'var(--radius-sm)', display: 'block', marginBottom: 6 }} />
+            <VideoPlayer src={steps.img2video.url} controls style={{ width: '100%', maxWidth: 160, borderRadius: 'var(--radius-sm)', display: 'block', marginBottom: 6 }} />
           ) : (
             <>
               <textarea
@@ -1599,7 +1620,7 @@ function PipelineView({ evo, projectId, direction, onUpdate }) {
             {s3 === 'completed' && <span style={{ fontSize: 9, color: 'var(--success)' }}>✓</span>}
           </div>
           {s3 === 'completed' && steps.extend.url ? (
-            <video src={steps.extend.url} controls style={{ width: '100%', maxWidth: 160, borderRadius: 'var(--radius-sm)', display: 'block', marginBottom: 6 }} />
+            <VideoPlayer src={steps.extend.url} controls style={{ width: '100%', maxWidth: 160, borderRadius: 'var(--radius-sm)', display: 'block', marginBottom: 6 }} />
           ) : (
             <>
               <textarea
@@ -1857,10 +1878,10 @@ function MediaThumb({ item, onRemove }) {
     <div style={{ position: 'relative', borderRadius: 'var(--radius-sm)', overflow: 'hidden', background: 'var(--bg-3)', border: '1px solid var(--border)' }}>
       <div style={{ aspectRatio: '4/3', overflow: 'hidden' }}>
         {item.resource_type === 'video' ? (
-          <video src={item.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted
-            onMouseEnter={e => e.target.play()} onMouseLeave={e => { e.target.pause(); e.target.currentTime = 0 }} />
+          <VideoPlayer src={item.url} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            onMouseEnter={e => e.target.play?.()} onMouseLeave={e => { e.target.pause?.(); e.target.currentTime = 0 }} />
         ) : (
-          <img src={item.url} alt={item.label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
+          <img src={getCloudinaryThumb(item.url)} onError={e => { e.target.src = item.url }} alt={item.label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
         )}
       </div>
       <div style={{ padding: '6px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
