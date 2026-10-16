@@ -1,11 +1,24 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import Hls from 'hls.js'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 function getCloudinaryThumb(url) {
   if (!url?.includes('cloudinary.com')) return url
   return url.replace('/image/upload/', '/image/upload/c_fill,h_300,w_300/')
+}
+
+function getCloudinaryVideoUrl(url) {
+  if (!url?.includes('cloudinary.com')) return url
+  return url.replace('/video/upload/', '/video/upload/f_mp4,vc_h264,q_auto/')
+}
+
+function getCloudinaryHlsUrl(url) {
+  if (!url?.includes('cloudinary.com')) return null
+  return url
+    .replace('/video/upload/', '/video/upload/sp_auto/')
+    .replace(/\.[^/.]+$/, '.m3u8')
 }
 
 function VideoPlayer({ src, style, controls, muted, onMouseEnter, onMouseLeave }) {
@@ -19,7 +32,7 @@ function VideoPlayer({ src, style, controls, muted, onMouseEnter, onMouseLeave }
   }
   return (
     <video style={style} controls={controls} muted={muted} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
-      <source src={src} type="video/mp4" onError={() => setErreur(true)} />
+      <source src={getCloudinaryVideoUrl(src)} type="video/mp4" onError={() => setErreur(true)} />
     </video>
   )
 }
@@ -1821,12 +1834,11 @@ function ProjectMediaSection({ projectId }) {
   return (
     <div style={{ marginBottom: 40 }}>
       <div
-        style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: open ? 20 : 0, cursor: 'pointer' }}
+        className="section-title"
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: open ? 20 : 0, cursor: 'pointer', fontSize: 18, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}
         onClick={() => setOpen(v => !v)}
       >
-        <div className="section-title" style={{ marginBottom: 0, borderBottom: 'none', paddingBottom: 0 }}>
-          Médias du projet {media.length > 0 && <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-3)' }}>({media.length})</span>}
-        </div>
+        <span>Médias du projet {media.length > 0 && <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-3)', textTransform: 'none', letterSpacing: 0 }}>({media.length})</span>}</span>
         <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{open ? '▼' : '▶'}</span>
       </div>
 
@@ -1905,6 +1917,741 @@ function MediaThumb({ item, onRemove }) {
 }
 
 
+// ── Montage Section ───────────────────────────
+
+const MONTAGE_PX_PER_SEC = 60
+
+function MontageSection({ projectId }) {
+  const [clips, setClips]                   = useState([])
+  const [selectedIdx, setSelectedIdx]       = useState(null)
+  const [media, setMedia]                   = useState([])
+  const [exportJobId, setExportJobId]       = useState(null)
+  const [exportStatus, setExportStatus]     = useState(null)
+  const [exportUrl, setExportUrl]           = useState(null)
+  const [exportErr, setExportErr]           = useState(null)
+  const [previewIdx, setPreviewIdx]         = useState(null)
+  const [collapsed, setCollapsed]           = useState(false)
+  const [showMediaPicker, setShowMediaPicker] = useState(false)
+  const [nativeDurations, setNativeDurations] = useState({})
+  const dragSrcIdx                          = useRef(null)
+  const trimDrag                            = useRef(null)
+  const pollRef                             = useRef(null)
+  const [previewFormat, setPreviewFormat]   = useState('16/9')
+  const [playheadTime, setPlayheadTime]     = useState(0)
+  const videoPreviewRef                     = useRef(null)
+  const pendingSeekRef                      = useRef(null)
+  const playheadDragRef                     = useRef(null)
+  const previewPanDragRef                   = useRef(null)
+  const previewContainerRef                 = useRef(null)
+  const imageTimerRef                       = useRef(null)
+  const [lastVideoSrc, setLastVideoSrc]     = useState(undefined)
+  const hlsRef                              = useRef(null)
+  const [showExportWarning, setShowExportWarning] = useState(false)
+
+  useEffect(() => {
+    fetch(`${API}/api/projects/${projectId}/media`)
+      .then(r => r.json())
+      .then(d => setMedia(d.media || []))
+      .catch(() => {})
+  }, [projectId])
+
+  useEffect(() => {
+    if (!exportJobId) return
+    pollRef.current = setInterval(async () => {
+      try {
+        const r  = await fetch(`${API}/api/video-editor/job/${exportJobId}`)
+        const d  = await r.json()
+        setExportStatus(d.status)
+        if (d.status === 'completed') {
+          clearInterval(pollRef.current)
+          setExportUrl(d.video_url)
+          setExportJobId(null)
+        } else if (d.status === 'failed') {
+          clearInterval(pollRef.current)
+          setExportErr(d.error || 'Export échoué')
+          setExportJobId(null)
+        }
+      } catch { clearInterval(pollRef.current) }
+    }, 3000)
+    return () => clearInterval(pollRef.current)
+  }, [exportJobId])
+
+  useEffect(() => {
+    if (clips.length > 0 && previewIdx === null) setPreviewIdx(0)
+    if (clips.length === 0) { setPreviewIdx(null); setPlayheadTime(0) }
+  }, [clips.length])
+
+  useEffect(() => {
+    const vid = videoPreviewRef.current
+
+    // Toujours détruire l'instance HLS précédente avant de changer de source
+    if (hlsRef.current) {
+      hlsRef.current.destroy()
+      hlsRef.current = null
+    }
+
+    if (previewIdx === null || !clips[previewIdx]) return
+    const clip = clips[previewIdx]
+
+    if (clip.resource_type !== 'video') {
+      if (vid) vid.pause()
+      return
+    }
+
+    setLastVideoSrc(clip.url)
+
+    const hlsUrl = getCloudinaryHlsUrl(clip.url)
+
+    if (hlsUrl && Hls.isSupported()) {
+      const hls = new Hls({ enableWorker: false })
+      hlsRef.current = hls
+      hls.loadSource(hlsUrl)
+      hls.attachMedia(vid)
+      // onLoadedMetadata s'occupe du seek + play après MANIFEST_PARSED
+    } else if (vid && vid.canPlayType('application/vnd.apple.mpegurl')) {
+      // Safari : HLS natif
+      vid.src = hlsUrl || getCloudinaryVideoUrl(clip.url)
+    } else {
+      // Fallback direct H.264
+      if (vid) vid.src = getCloudinaryVideoUrl(clip.url)
+    }
+
+    return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy()
+        hlsRef.current = null
+      }
+    }
+  }, [previewIdx, clips])
+
+  // Avance automatiquement après la durée d'une image
+  useEffect(() => {
+    if (imageTimerRef.current) clearTimeout(imageTimerRef.current)
+    if (previewIdx === null || !clips[previewIdx]) return
+    const clip = clips[previewIdx]
+    if (clip.resource_type !== 'image') return
+    const clipStart = clips.slice(0, previewIdx).reduce((acc, c) => acc + effectiveDuration(c), 0)
+    setPlayheadTime(clipStart)
+    imageTimerRef.current = setTimeout(() => {
+      const nextIdx = previewIdx + 1
+      if (nextIdx < clips.length) {
+        setPlayheadTime(clips.slice(0, nextIdx).reduce((acc, c) => acc + effectiveDuration(c), 0))
+        setPreviewIdx(nextIdx)
+      }
+    }, (clip.duration || 3) * 1000)
+    return () => clearTimeout(imageTimerRef.current)
+  }, [previewIdx, clips, nativeDurations])
+
+  useEffect(() => {
+    const onMouseMove = (e) => {
+      if (!previewPanDragRef.current) return
+      const { startX, startY, startPanX, startPanY, clipIdx } = previewPanDragRef.current
+      const newPanX = startPanX + e.clientX - startX
+      const newPanY = startPanY + e.clientY - startY
+      setClips(prev => prev.map((c, i) => i === clipIdx ? { ...c, pan_x: newPanX, pan_y: newPanY } : c))
+    }
+    const onMouseUp = () => { previewPanDragRef.current = null }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => { window.removeEventListener('mousemove', onMouseMove); window.removeEventListener('mouseup', onMouseUp) }
+  }, [])
+
+  const addClip = (item) => {
+    setClips(prev => [...prev, {
+      id:                   `${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+      url:                  item.url,
+      resource_type:        item.resource_type,
+      label:                item.label || item.public_id?.split('/').pop() || 'clip',
+      trim_start:           0,
+      trim_end:             null,
+      speed:                1.0,
+      duration:             3.0,
+      transition_after:     'cut',
+      transition_duration:  0.5,
+      zoom:                 1.0,
+      pan_x:                0,
+      pan_y:                0,
+    }])
+  }
+
+  const removeClip = (idx) => {
+    setClips(prev => prev.filter((_, i) => i !== idx))
+    if (selectedIdx === idx) setSelectedIdx(null)
+  }
+
+  const updateClip = (idx, patch) => {
+    setClips(prev => prev.map((clip, i) => i === idx ? { ...clip, ...patch } : clip))
+  }
+
+  const onDragStart = (idx) => { dragSrcIdx.current = idx }
+
+  const onDrop = (targetIdx) => {
+    const srcIdx = dragSrcIdx.current
+    if (srcIdx === null || srcIdx === targetIdx) return
+    setClips(prev => {
+      const next = [...prev]
+      const [moved] = next.splice(srcIdx, 1)
+      next.splice(targetIdx, 0, moved)
+      return next
+    })
+    dragSrcIdx.current = null
+  }
+
+  const startExport = async () => {
+    if (clips.length === 0) return
+    setExportErr(null); setExportUrl(null); setExportStatus('pending')
+    const containerEl = previewContainerRef.current
+    const containerW  = containerEl ? containerEl.clientWidth  : 800
+    const containerH  = containerEl ? containerEl.clientHeight : 450
+    const body = {
+      project_id: projectId,
+      clips: clips.map(c => ({
+        url:                 c.url,
+        resource_type:       c.resource_type,
+        trim_start:          c.trim_start,
+        trim_end:            c.trim_end || null,
+        speed:               c.speed,
+        duration:            c.duration,
+        transition_after:    c.transition_after,
+        transition_duration: c.transition_duration,
+        zoom:                c.zoom ?? 1,
+        pan_x_frac:          (c.pan_x ?? 0) / containerW,
+        pan_y_frac:          (c.pan_y ?? 0) / containerH,
+      }))
+    }
+    const r = await fetch(`${API}/api/video-editor/export`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+    const d = await r.json()
+    if (!r.ok) { setExportErr(d.detail || 'Erreur export'); setExportStatus(null); return }
+    setExportJobId(d.job_id)
+  }
+
+  // Durée effective d'un clip dans la timeline
+  const effectiveDuration = useCallback((clip) => {
+    if (clip.resource_type === 'image') return clip.duration || 3
+    const native = nativeDurations[clip.id] || 5
+    const end    = clip.trim_end ?? native
+    return Math.max(0.2, (end - (clip.trim_start || 0)) / (clip.speed || 1))
+  }, [nativeDurations])
+
+  const seekToTime = useCallback((targetTime) => {
+    const clamped = Math.max(0, Math.min(targetTime, clips.reduce((acc, c) => acc + effectiveDuration(c), 0)))
+    let accumulated = 0
+    for (let clipIdx = 0; clipIdx < clips.length; clipIdx++) {
+      const dur = effectiveDuration(clips[clipIdx])
+      if (clamped <= accumulated + dur || clipIdx === clips.length - 1) {
+        const clip       = clips[clipIdx]
+        const timeInClip = clamped - accumulated
+        const videoTime  = (clip.trim_start || 0) + timeInClip * (clip.speed || 1)
+        setPlayheadTime(clamped)
+        if (clipIdx === previewIdx && videoPreviewRef.current) {
+          videoPreviewRef.current.currentTime = videoTime
+        } else {
+          pendingSeekRef.current = videoTime
+          setPreviewIdx(clipIdx)
+        }
+        return
+      }
+      accumulated += dur
+    }
+  }, [clips, previewIdx, effectiveDuration])
+
+  // Drag playhead
+  useEffect(() => {
+    const onMouseMove = (e) => {
+      if (!playheadDragRef.current) return
+      const { startX, startTime } = playheadDragRef.current
+      seekToTime(startTime + (e.clientX - startX) / MONTAGE_PX_PER_SEC)
+    }
+    const onMouseUp = () => { playheadDragRef.current = null }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => { window.removeEventListener('mousemove', onMouseMove); window.removeEventListener('mouseup', onMouseUp) }
+  }, [seekToTime])
+
+  // Drag trim handles
+  useEffect(() => {
+    const onMouseMove = (e) => {
+      if (!trimDrag.current) return
+      const { clipIdx, side, startX, startVal } = trimDrag.current
+      const delta  = (e.clientX - startX) / MONTAGE_PX_PER_SEC
+      const clip   = clips[clipIdx]
+      const native = nativeDurations[clip.id] || 999
+      if (side === 'left') {
+        const newStart = Math.max(0, Math.min(startVal + delta, (clip.trim_end ?? native) - 0.2))
+        updateClip(clipIdx, { trim_start: Math.round(newStart * 10) / 10 })
+      } else {
+        const newEnd = Math.max((clip.trim_start || 0) + 0.2, Math.min(startVal + delta, native))
+        updateClip(clipIdx, { trim_end: Math.round(newEnd * 10) / 10 })
+      }
+    }
+    const onMouseUp = () => { trimDrag.current = null }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => { window.removeEventListener('mousemove', onMouseMove); window.removeEventListener('mouseup', onMouseUp) }
+  }, [clips, nativeDurations])
+
+  const selectedClip  = selectedIdx !== null ? clips[selectedIdx] : null
+  const isExporting   = exportStatus === 'pending' || exportStatus === 'processing'
+  const totalDuration = clips.reduce((acc, clip) => acc + effectiveDuration(clip), 0)
+  const rulerTicks    = Array.from({ length: Math.ceil(totalDuration) + 1 }, (_, i) => i)
+  const prevClip      = previewIdx !== null ? clips[previewIdx] : null
+  const prevZoom      = prevClip?.zoom ?? 1
+  const prevPanX      = prevClip?.pan_x ?? 0
+  const prevPanY      = prevClip?.pan_y ?? 0
+
+  return (
+    <div style={{ marginTop: 40 }}>
+
+      {/* Éléments vidéo invisibles pour détecter la durée native */}
+      {clips.filter(c => c.resource_type === 'video').map(clip => (
+        <video key={clip.id} src={getCloudinaryVideoUrl(clip.url)} style={{ display: 'none' }}
+          onLoadedMetadata={e => setNativeDurations(prev => ({ ...prev, [clip.id]: e.target.duration }))} />
+      ))}
+
+      <div
+        className="section-title"
+        style={{ marginBottom: collapsed ? 0 : 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 18, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}
+        onClick={() => setCollapsed(c => !c)}
+      >
+        <span>Montage {clips.length > 0 && <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-3)' }}>({clips.length} clip{clips.length > 1 ? 's' : ''} — {totalDuration.toFixed(1)}s)</span>}</span>
+        <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{collapsed ? '▶' : '▼'}</span>
+      </div>
+
+      {!collapsed && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn btn-ghost" style={{ fontSize: 11, padding: '5px 14px' }}
+              onClick={() => setShowMediaPicker(true)}>
+              + Ajouter un média
+            </button>
+            <button className="btn btn-primary" style={{ fontSize: 11, padding: '5px 14px' }}
+              onClick={() => {
+                if (clips.some(c => c.resource_type === 'image')) {
+                  setShowExportWarning(true)
+                } else {
+                  startExport()
+                }
+              }}
+              disabled={clips.length === 0 || isExporting}>
+                {isExporting ? 'Export en cours…' : '⬇ Exporter'}
+              </button>
+
+              {/* Popup avertissement photos */}
+              {showExportWarning && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  onClick={() => setShowExportWarning(false)}>
+                  <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '24px 28px', maxWidth: 380, width: '90%', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
+                    onClick={e => e.stopPropagation()}>
+                    <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 10, color: 'var(--text)' }}>
+                      Attention
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6 }}>
+                      Les photos ne peuvent pas être exportées dans le mode &quot;montage&quot;, merci de n&apos;inclure que des vidéos mon gros pote (je fixerai ça plus tard)
+                    </div>
+                    <button className="btn btn-primary" style={{ marginTop: 18, width: '100%', fontSize: 12 }}
+                      onClick={() => setShowExportWarning(false)}>
+                      OK, j&apos;ai compris
+                    </button>
+                  </div>
+                </div>
+              )}
+              {isExporting && <div className="progress-track" style={{ width: 80, margin: 0 }}><div className="progress-fill indeterminate" /></div>}
+              {exportErr && <span style={{ fontSize: 11, color: 'var(--error)' }}>{exportErr}</span>}
+              {exportUrl && (
+                <a href={exportUrl} target="_blank" rel="noreferrer" className="btn btn-ghost"
+                  style={{ fontSize: 11, padding: '5px 14px', color: 'var(--success)', borderColor: 'var(--success)' }}>
+                  ✓ Ouvrir le montage ↗
+                </a>
+              )}
+            </div>
+
+            {/* ── Timeline ── */}
+            {clips.length === 0 ? (
+              <div style={{ border: '2px dashed var(--accent)', borderRadius: 'var(--radius)', padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 12 }}>
+                Cliquez sur <strong style={{ color: 'var(--text-3)' }}>+ Ajouter un média</strong> pour commencer
+              </div>
+            ) : (
+              <div style={{ background: 'var(--bg-2)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', overflow: 'hidden' }}>
+
+                {/* Règle temporelle */}
+                <div style={{ display: 'flex', alignItems: 'flex-end', height: 22, borderBottom: '1px solid var(--border)', overflowX: 'auto', position: 'relative', background: 'var(--bg-1)' }}>
+                  <div style={{ display: 'flex', paddingLeft: 8, minWidth: totalDuration * MONTAGE_PX_PER_SEC + 40 }}>
+                    {rulerTicks.map(sec => (
+                      <div key={sec} style={{ position: 'absolute', left: 8 + sec * MONTAGE_PX_PER_SEC, bottom: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                        <span style={{ fontSize: 8, color: 'var(--text-3)', lineHeight: 1, marginBottom: 2 }}>{sec}s</span>
+                        <div style={{ width: 1, height: 4, background: 'var(--border-2)' }} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Piste clips */}
+                <div
+                  style={{ display: 'flex', alignItems: 'stretch', padding: '10px 8px', overflowX: 'auto', minHeight: 90, gap: 0, position: 'relative' }}
+                  onClick={e => {
+                    if (e.target === e.currentTarget) {
+                      const rect = e.currentTarget.getBoundingClientRect()
+                      seekToTime((e.clientX - rect.left - 8 + e.currentTarget.scrollLeft) / MONTAGE_PX_PER_SEC)
+                    }
+                  }}>
+                  {/* Playhead */}
+                  <div style={{ position: 'absolute', left: 8 + playheadTime * MONTAGE_PX_PER_SEC - 1, top: 0, bottom: 0, width: 2, background: 'var(--accent)', zIndex: 10, pointerEvents: 'none' }}>
+                    <div
+                      style={{ position: 'absolute', top: 4, left: -5, width: 12, height: 12, borderRadius: '50%', background: 'var(--accent)', cursor: 'ew-resize', pointerEvents: 'auto', boxShadow: '0 0 0 2px rgba(0,0,0,0.4)' }}
+                      onMouseDown={e => { e.stopPropagation(); e.preventDefault(); playheadDragRef.current = { startX: e.clientX, startTime: playheadTime } }}
+                    />
+                  </div>
+                  {clips.map((clip, idx) => {
+                    const clipW   = Math.max(40, effectiveDuration(clip) * MONTAGE_PX_PER_SEC)
+                    const isSelected = selectedIdx === idx
+                    return (
+                      <div key={clip.id} style={{ display: 'flex', alignItems: 'stretch', flexShrink: 0 }}>
+                        {/* Clip block */}
+                        <div
+                          draggable
+                          onDragStart={e => { e.stopPropagation(); onDragStart(idx) }}
+                          onDragOver={e => e.preventDefault()}
+                          onDrop={() => onDrop(idx)}
+                          onClick={e => { e.stopPropagation(); setSelectedIdx(idx === selectedIdx ? null : idx) }}
+                          style={{
+                            width: clipW, height: 70, position: 'relative', cursor: 'grab',
+                            borderRadius: 'var(--radius-sm)', overflow: 'hidden',
+                            border: `2px solid ${isSelected ? 'var(--accent)' : 'var(--border-2)'}`,
+                            boxShadow: isSelected ? '0 0 0 1px var(--accent)' : 'none',
+                          }}
+                        >
+                          {/* Thumbnail de fond */}
+                          <div style={{ position: 'absolute', inset: 0 }}>
+                            {clip.resource_type === 'video'
+                              ? <video src={getCloudinaryVideoUrl(clip.url)} muted style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7 }} />
+                              : <img src={getCloudinaryThumb(clip.url)} onError={e => { e.target.src = clip.url }} alt=""
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7 }} />
+                            }
+                            <div style={{ position: 'absolute', inset: 0, background: isSelected ? 'rgba(232,0,45,0.15)' : 'rgba(0,0,0,0.35)' }} />
+                          </div>
+
+                          {/* Label + durée */}
+                          <div style={{ position: 'absolute', bottom: 4, left: 6, right: 6 }}>
+                            <div style={{ fontSize: 9, color: '#fff', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{clip.label}</div>
+                            <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.6)' }}>
+                              {clip.resource_type === 'video'
+                                ? `${clip.trim_start.toFixed(1)}s → ${clip.trim_end != null ? clip.trim_end.toFixed(1) + 's' : 'fin'}`
+                                : `${(clip.duration || 3).toFixed(1)}s`
+                              }
+                              {clip.speed !== 1 && ` · ${clip.speed}x`}
+                            </div>
+                          </div>
+
+                          {/* Bouton supprimer */}
+                          <button onClick={e => { e.stopPropagation(); removeClip(idx) }}
+                            style={{ position: 'absolute', top: 3, right: 3, background: 'rgba(0,0,0,0.7)', border: 'none', color: '#fff', fontSize: 8, cursor: 'pointer', borderRadius: 3, padding: '1px 4px', lineHeight: 1.2 }}>
+                            ✕
+                          </button>
+
+                          {/* Poignée trim gauche */}
+                          {clip.resource_type === 'video' && (
+                            <div
+                              onMouseDown={e => { e.stopPropagation(); e.preventDefault(); trimDrag.current = { clipIdx: idx, side: 'left', startX: e.clientX, startVal: clip.trim_start } }}
+                              style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <div style={{ width: 2, height: 20, background: 'rgba(255,255,255,0.6)', borderRadius: 1 }} />
+                            </div>
+                          )}
+
+                          {/* Poignée trim droite */}
+                          {clip.resource_type === 'video' && (
+                            <div
+                              onMouseDown={e => { e.stopPropagation(); e.preventDefault(); trimDrag.current = { clipIdx: idx, side: 'right', startX: e.clientX, startVal: clip.trim_end ?? (nativeDurations[clip.id] || 5) } }}
+                              style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <div style={{ width: 2, height: 20, background: 'rgba(255,255,255,0.6)', borderRadius: 1 }} />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Indicateur de transition */}
+                        {idx < clips.length - 1 && (
+                          <div style={{ width: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                            title={clip.transition_after === 'fade' ? `Fondu ${clip.transition_duration}s` : 'Cut'}
+                            onClick={() => updateClip(idx, { transition_after: clip.transition_after === 'cut' ? 'fade' : 'cut' })}>
+                            <div style={{
+                              width: 8, height: 8, borderRadius: '50%',
+                              background: clip.transition_after === 'fade' ? 'var(--accent)' : 'var(--border-2)',
+                              border: `1px solid ${clip.transition_after === 'fade' ? 'var(--accent)' : 'var(--text-3)'}`,
+                            }} title="Clic pour basculer cut/fondu" />
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ── Panneau propriétés (clip sélectionné) ── */}
+            {selectedClip && (
+              <div style={{ background: 'var(--bg-2)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', padding: 14 }}>
+                <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Clip sélectionné — {selectedClip.label}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
+
+                  {selectedClip.resource_type === 'video' && (
+                    <>
+                      <div>
+                        <label style={{ fontSize: 10, color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>Début (s)</label>
+                        <input type="number" min="0" step="0.1" value={selectedClip.trim_start}
+                          onChange={e => updateClip(selectedIdx, { trim_start: parseFloat(e.target.value) || 0 })}
+                          style={{ width: '100%', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', padding: '5px 8px', fontSize: 12 }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 10, color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>Fin (s) — vide = jusqu'à la fin</label>
+                        <input type="number" min="0" step="0.1" value={selectedClip.trim_end ?? ''}
+                          placeholder="fin"
+                          onChange={e => updateClip(selectedIdx, { trim_end: e.target.value === '' ? null : parseFloat(e.target.value) })}
+                          style={{ width: '100%', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', padding: '5px 8px', fontSize: 12 }} />
+                      </div>
+                    </>
+                  )}
+
+                  {selectedClip.resource_type === 'image' && (
+                    <div>
+                      <label style={{ fontSize: 10, color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>Durée (s)</label>
+                      <input type="number" min="0.5" step="0.5" value={selectedClip.duration}
+                        onChange={e => updateClip(selectedIdx, { duration: parseFloat(e.target.value) || 3 })}
+                        style={{ width: '100%', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', padding: '5px 8px', fontSize: 12 }} />
+                    </div>
+                  )}
+
+                  <div>
+                    <label style={{ fontSize: 10, color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>Vitesse — {selectedClip.speed}x</label>
+                    <input type="range" min="0.25" max="4" step="0.25" value={selectedClip.speed}
+                      onChange={e => updateClip(selectedIdx, { speed: parseFloat(e.target.value) })}
+                      style={{ width: '100%' }} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--text-3)' }}>
+                      <span>0.25x</span><span>1x</span><span>4x</span>
+                    </div>
+                  </div>
+
+                  {selectedIdx < clips.length - 1 && (
+                    <div>
+                      <label style={{ fontSize: 10, color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>Transition après</label>
+                      <div style={{ display: 'flex', gap: 6, marginBottom: selectedClip.transition_after === 'fade' ? 8 : 0 }}>
+                        {['cut', 'fade'].map(t => (
+                          <button key={t} className={`btn ${selectedClip.transition_after === t ? 'btn-primary' : 'btn-ghost'}`}
+                            style={{ fontSize: 10, padding: '4px 12px', flex: 1 }}
+                            onClick={() => updateClip(selectedIdx, { transition_after: t })}>
+                            {t === 'cut' ? 'Cut' : 'Fondu'}
+                          </button>
+                        ))}
+                      </div>
+                      {selectedClip.transition_after === 'fade' && (
+                        <input type="number" min="0.1" max="3" step="0.1" value={selectedClip.transition_duration}
+                          onChange={e => updateClip(selectedIdx, { transition_duration: parseFloat(e.target.value) || 0.5 })}
+                          style={{ width: '100%', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', padding: '5px 8px', fontSize: 12 }}
+                          placeholder="Durée fondu (s)" />
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── Preview player (automatique) ── */}
+            {clips.length > 0 && (
+              <div style={{ background: 'var(--bg-2)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', padding: 12 }}>
+
+                {/* Header : info + sélecteur de format */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                    {previewIdx !== null ? `Clip ${previewIdx + 1}/${clips.length} — ${clips[previewIdx]?.label}` : 'Preview'}
+                    <span style={{ marginLeft: 8, opacity: 0.6 }}>{playheadTime.toFixed(1)}s / {clips.reduce((acc, c) => acc + effectiveDuration(c), 0).toFixed(1)}s</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                    <span style={{ fontSize: 10, color: 'var(--text-3)' }}>Format</span>
+                    {['16/9', '9/16', '1/1', '4/3'].map(fmt => (
+                      <button key={fmt}
+                        className={`btn ${previewFormat === fmt ? 'btn-primary' : 'btn-ghost'}`}
+                        style={{ fontSize: 9, padding: '2px 8px' }}
+                        onClick={() => { setPreviewFormat(fmt); if (previewIdx !== null) updateClip(previewIdx, { zoom: 1, pan_x: 0, pan_y: 0 }) }}>
+                        {fmt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Slider zoom */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                  <span style={{ fontSize: 10, color: 'var(--text-3)', flexShrink: 0 }}>Zoom</span>
+                  <input type="range" min="1" max="3" step="0.05" value={prevZoom}
+                    onChange={e => { if (previewIdx !== null) updateClip(previewIdx, { zoom: parseFloat(e.target.value) }) }}
+                    style={{ flex: 1 }} />
+                  <span style={{ fontSize: 10, color: 'var(--text-2)', minWidth: 32, textAlign: 'right' }}>{prevZoom.toFixed(1)}×</span>
+                  {(prevZoom !== 1 || prevPanX !== 0 || prevPanY !== 0) && (
+                    <button className="btn btn-ghost" style={{ fontSize: 9, padding: '2px 8px', flexShrink: 0 }}
+                      onClick={() => { if (previewIdx !== null) updateClip(previewIdx, { zoom: 1, pan_x: 0, pan_y: 0 }) }}>
+                      Réinit.
+                    </button>
+                  )}
+                </div>
+
+                {/* Zone vidéo avec zoom/pan */}
+                <div ref={previewContainerRef} style={{ width: '100%', aspectRatio: previewFormat, background: '#000', borderRadius: 'var(--radius-sm)', overflow: 'hidden', position: 'relative' }}>
+                  {previewIdx !== null && clips[previewIdx] ? (
+                    <div
+                      style={{
+                        position: 'absolute', inset: 0,
+                        transform: `translate(${prevPanX}px, ${prevPanY}px) scale(${prevZoom})`,
+                        transformOrigin: 'center',
+                        cursor: prevZoom > 1 ? 'grab' : 'default',
+                        userSelect: 'none',
+                      }}
+                      onMouseDown={e => {
+                        if (prevZoom <= 1) return
+                        const rect = e.currentTarget.getBoundingClientRect()
+                        if (e.clientY > rect.bottom - 48) return
+                        e.preventDefault()
+                        previewPanDragRef.current = { startX: e.clientX, startY: e.clientY, startPanX: prevPanX, startPanY: prevPanY, clipIdx: previewIdx }
+                      }}>
+                      {/* Vidéo et image toujours montés — display bascule pour éviter tout flash */}
+                      <video
+                        ref={videoPreviewRef}
+                        preload="auto"
+                        controls
+                        style={{ width: '100%', height: '100%', objectFit: 'contain', position: 'absolute', inset: 0, display: clips[previewIdx].resource_type === 'video' ? 'block' : 'none' }}
+                        onLoadedMetadata={() => {
+                          if (!videoPreviewRef.current) return
+                          const clip = clips[previewIdx]
+                          if (pendingSeekRef.current !== null) {
+                            videoPreviewRef.current.currentTime = pendingSeekRef.current
+                            pendingSeekRef.current = null
+                          } else if ((clip?.trim_start || 0) > 0) {
+                            videoPreviewRef.current.currentTime = clip.trim_start
+                          }
+                          videoPreviewRef.current.play().catch(() => {})
+                        }}
+                        onTimeUpdate={e => {
+                          const clip = clips[previewIdx]
+                          if (!clip) return
+                          const currentTime = e.target.currentTime
+                          if (clip.trim_end !== null && clip.trim_end !== undefined && currentTime >= clip.trim_end) {
+                            e.target.pause()
+                            const nextIdx = (previewIdx ?? 0) + 1
+                            if (nextIdx < clips.length) {
+                              setPlayheadTime(clips.slice(0, nextIdx).reduce((acc, c) => acc + effectiveDuration(c), 0))
+                              setPreviewIdx(nextIdx)
+                            }
+                            return
+                          }
+                          const clipStart = clips.slice(0, previewIdx).reduce((acc, c) => acc + effectiveDuration(c), 0)
+                          setPlayheadTime(clipStart + Math.max(0, (currentTime - (clip.trim_start || 0)) / (clip.speed || 1)))
+                        }}
+                        onEnded={() => {
+                          const nextIdx = (previewIdx ?? 0) + 1
+                          if (nextIdx < clips.length) {
+                            setPlayheadTime(clips.slice(0, nextIdx).reduce((acc, c) => acc + effectiveDuration(c), 0))
+                            setPreviewIdx(nextIdx)
+                          }
+                        }}
+                      />
+                      <img
+                        src={clips[previewIdx].resource_type === 'image' ? clips[previewIdx].url : undefined}
+                        alt=""
+                        style={{ width: '100%', height: '100%', objectFit: 'contain', position: 'absolute', inset: 0, display: clips[previewIdx].resource_type === 'image' ? 'block' : 'none' }}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Navigation */}
+                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                  <button className="btn btn-ghost" style={{ fontSize: 10, padding: '3px 10px' }}
+                    onClick={() => { setPreviewIdx(0); setPlayheadTime(0) }}>⏮</button>
+                  <button className="btn btn-ghost" style={{ fontSize: 10, padding: '3px 10px' }}
+                    onClick={() => { if (previewIdx > 0) { const prev = previewIdx - 1; const t = clips.slice(0, prev).reduce((acc, c) => acc + effectiveDuration(c), 0); setPreviewIdx(prev); setPlayheadTime(t) } }}
+                    disabled={previewIdx === 0 || previewIdx === null}>◀</button>
+                  <button className="btn btn-ghost" style={{ fontSize: 10, padding: '3px 10px' }}
+                    onClick={() => { if (previewIdx < clips.length - 1) { const next = previewIdx + 1; const t = clips.slice(0, next).reduce((acc, c) => acc + effectiveDuration(c), 0); setPreviewIdx(next); setPlayheadTime(t) } }}
+                    disabled={previewIdx === null || previewIdx >= clips.length - 1}>▶</button>
+                </div>
+
+              </div>
+            )}
+
+          {/* ── Modale sélection médias ── */}
+          {showMediaPicker && (
+            <div
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              onClick={() => setShowMediaPicker(false)}>
+              <div
+                style={{ background: 'var(--bg-1)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', width: 'min(90vw, 720px)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+                onClick={e => e.stopPropagation()}>
+
+                {/* Header */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Choisir un média</span>
+                  <button
+                    onClick={() => setShowMediaPicker(false)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text-3)', lineHeight: 1, padding: '2px 6px' }}>
+                    ✕
+                  </button>
+                </div>
+
+                {/* Grille médias */}
+                <div style={{ overflowY: 'auto', padding: 20, flex: 1 }}>
+                  {media.length === 0 ? (
+                    <div style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: 13, padding: 40 }}>
+                      Aucun média dans ce projet.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 14 }}>
+                      {media.map(item => (
+                        <div
+                          key={item.public_id}
+                          onClick={() => { addClip(item); setShowMediaPicker(false) }}
+                          style={{ borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--bg-2)', border: '2px solid var(--border)', cursor: 'pointer', transition: 'border-color 0.15s, transform 0.15s' }}
+                          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.transform = 'scale(1.02)' }}
+                          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.transform = 'scale(1)' }}>
+                          {/* Thumbnail 16/9 */}
+                          <div style={{ width: '100%', aspectRatio: '16/9', background: '#000', overflow: 'hidden', position: 'relative' }}>
+                            {item.resource_type === 'video'
+                              ? <video src={getCloudinaryVideoUrl(item.url)} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              : <img src={getCloudinaryThumb(item.url)} onError={e => { e.target.src = item.url }} alt=""
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            }
+                            <div style={{ position: 'absolute', top: 5, right: 5, background: 'rgba(0,0,0,0.65)', borderRadius: 4, padding: '2px 7px', fontSize: 9, color: '#fff', fontWeight: 500 }}>
+                              {item.resource_type === 'video' ? '▶ vidéo' : '⬜ image'}
+                            </div>
+                          </div>
+                          {/* Label */}
+                          <div style={{ padding: '7px 10px', fontSize: 11, color: 'var(--text-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {item.label || item.public_id?.split('/').pop()}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div style={{ padding: '10px 18px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
+                  <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => setShowMediaPicker(false)}>Fermer</button>
+                </div>
+
+              </div>
+            </div>
+          )}
+
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 // ── Main Dashboard ────────────────────────────
 
 export default function ProjectDashboard({ onUpdate }) {
@@ -1919,6 +2666,7 @@ export default function ProjectDashboard({ onUpdate }) {
   const [creating, setCreating]       = useState(false)
   const [confirmDel, setConfirmDel]   = useState(false)
   const [deleting, setDeleting]       = useState(false)
+  const [evosOpen, setEvosOpen]       = useState(true)
 
   const load = async () => {
     try {
@@ -2032,15 +2780,25 @@ export default function ProjectDashboard({ onUpdate }) {
         onSaved={() => { load(); if (onUpdate) onUpdate() }}
       />
 
-      {/* Médias du projet */}
-      <ProjectMediaSection projectId={id} />
+      {/* Montage */}
+      <MontageSection projectId={id} />
 
-      {/* Évolutions */}
-      <div className="section-title" style={{ marginBottom: 20 }}>
-        Évolutions {evos.length > 0 && <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-3)' }}>({evos.length})</span>}
+      {/* Médias du projet */}
+      <div style={{ marginTop: 48 }}>
+        <ProjectMediaSection projectId={id} />
       </div>
 
-      {evos.length === 0 ? (
+      {/* Évolutions */}
+      <div
+        className="section-title"
+        style={{ marginBottom: evosOpen ? 20 : 0, fontSize: 18, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+        onClick={() => setEvosOpen(v => !v)}
+      >
+        <span>Évolutions {evos.length > 0 && <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-3)', textTransform: 'none', letterSpacing: 0 }}>({evos.length})</span>}</span>
+        <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{evosOpen ? '▼' : '▶'}</span>
+      </div>
+
+      {evosOpen && (evos.length === 0 ? (
         <div className="empty-state">
           <p>Aucune évolution. Cliquez sur « + Nouvelle évolution » pour commencer le pipeline.</p>
         </div>
@@ -2051,7 +2809,7 @@ export default function ProjectDashboard({ onUpdate }) {
             direction={project.direction} onUpdate={load} onDelete={load}
           />
         ))
-      )}
+      ))}
 
       {/* Mode selection modal */}
       {showModeModal && (
@@ -2060,6 +2818,7 @@ export default function ProjectDashboard({ onUpdate }) {
           onClose={() => setShowModeModal(false)}
         />
       )}
+
     </>
   )
 }

@@ -286,10 +286,59 @@ class VideoUtils:
         # Pour l'instant, utilise fade
         return self.concat_videos_with_fade(video_paths, output_path, fade_duration=1.0)
     
+    def trim_video(self, input_path: str, output_path: str, start: float, end: float) -> str:
+        """Coupe une vidéo entre start et end (secondes)."""
+        cmd = [
+            'ffmpeg',
+            '-ss', str(start),
+            '-to', str(end),
+            '-i', input_path,
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
+            '-an',
+            '-y', output_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        if result.returncode != 0:
+            raise Exception(f"Erreur trim : {result.stderr}")
+        return output_path
+
+    def change_speed(self, input_path: str, output_path: str, speed: float) -> str:
+        """Modifie la vitesse d'une vidéo (0.25 = ralenti x4, 2.0 = accéléré x2)."""
+        pts = round(1.0 / speed, 6)
+        cmd = [
+            'ffmpeg',
+            '-i', input_path,
+            '-filter:v', f'setpts={pts}*PTS',
+            '-an',
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
+            '-y', output_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        if result.returncode != 0:
+            raise Exception(f"Erreur speed : {result.stderr}")
+        return output_path
+
+    def image_to_clip(self, image_path: str, output_path: str, duration: float) -> str:
+        """Convertit une image en clip vidéo de durée fixe (24fps, 1920x1080)."""
+        cmd = [
+            'ffmpeg',
+            '-loop', '1',
+            '-i', image_path,
+            '-t', str(duration),
+            '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=24',
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
+            '-an',
+            '-y', output_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        if result.returncode != 0:
+            raise Exception(f"Erreur image_to_clip : {result.stderr}")
+        return output_path
+
     def upload_image_to_0x0(self, image_path: str) -> str:
         """
         Upload une image vers 0x0.st (gratuit, 30 jours).
-        
+
         Args:
             image_path: Chemin de l'image
             
