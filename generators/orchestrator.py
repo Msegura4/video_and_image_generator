@@ -3,10 +3,10 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from src.agent import Agent
-from src.image_generator_agent import ImageGenerator
-from src.video_generator_agent import VideoGenerator
-from src.video_extender_agent import VideoExtender
+from generators.agent import Agent
+from generators.image_generator_agent import ImageGenerator
+from generators.video_generator_agent import VideoGenerator
+from generators.video_extender_agent import VideoExtender
 
 
 class Orchestrator(Agent):

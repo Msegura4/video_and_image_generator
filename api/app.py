@@ -16,8 +16,8 @@ sys.path.insert(0, str(ROOT_DIR / "src"))
 from dotenv import load_dotenv
 load_dotenv(ROOT_DIR / ".env")
 
-from src.orchestrator import Orchestrator
-from video_utils import VideoUtils
+from generators.orchestrator import Orchestrator
+from utils.video_utils import VideoUtils
 
 _orchestrator = None
 
@@ -420,7 +420,7 @@ def get_negative_prompt_endpoint(preset_name: str):
 # ─────────────────────────────────────────────
 
 def _get_cloudinary():
-    from cloudinary_manager import CloudinaryManager
+    from utils.cloudinary_manager import CloudinaryManager
     return CloudinaryManager()
 
 
@@ -1188,150 +1188,28 @@ def remove_project_media(project_id: str, public_id: str):
 # MONTAGE VIDÉO
 # ─────────────────────────────────────────────
 
-class MontageClip(BaseModel):
-    url:                  str
-    resource_type:        str = "video"   # video | image
-    trim_start:           float = 0.0
-    trim_end:             Optional[float] = None
-    speed:                float = 1.0
-    duration:             Optional[float] = 3.0   # pour les images
-    transition_after:     str = "cut"             # cut | fade
-    transition_duration:  float = 0.5
-    zoom:                 float = 1.0
-    pan_x_frac:           float = 0.0             # fraction de la largeur du conteneur (−0.5..+0.5)
-    pan_y_frac:           float = 0.0             # fraction de la hauteur du conteneur
+from generators.montage_video import MontageAgent, MontageClip, MontageExportBody
 
-class MontageExportBody(BaseModel):
-    project_id: str
-    clips:      List[MontageClip]
+_montage_agent = None
 
-
-def _process_clip(clip: MontageClip, index: int, work_dir: Path) -> Path:
-    """Télécharge et prépare un clip (trim, speed, normalisation)."""
-    import subprocess as _sp
-
-    # Téléchargement
-    ext = ".mp4" if clip.resource_type == "video" else Path(clip.url.split("?")[0]).suffix or ".jpg"
-    raw_path  = work_dir / f"raw_{index}{ext}"
-    proc_path = work_dir / f"clip_{index}.mp4"
-
-    resp = _requests.get(clip.url, timeout=60)
-    resp.raise_for_status()
-    raw_path.write_bytes(resp.content)
-
-    utils = VideoUtils()
-
-    if clip.resource_type == "image":
-        dur = clip.duration or 3.0
-        utils.image_to_clip(str(raw_path), str(proc_path), dur)
-        return proc_path
-
-    # Vidéo : trim → speed → normalise (tout en un seul pass FFmpeg)
-    trim_start = clip.trim_start or 0.0
-    duration_flag = []
-    if clip.trim_end is not None and clip.trim_end > trim_start:
-        duration_flag = ['-to', str(clip.trim_end - trim_start)]
-
-    speed = clip.speed if clip.speed and clip.speed != 1.0 else None
-    pts   = f"setpts={round(1.0/speed, 6)}*PTS," if speed else ""
-
-    # Zoom + pan → crop puis scale
-    zoom = clip.zoom if clip.zoom and clip.zoom > 1.001 else None
-    if zoom:
-        crop_w = int(1920 / zoom) & ~1   # pair pour H.264
-        crop_h = int(1080 / zoom) & ~1
-        x_center = (1920 - crop_w) // 2 - round(1920 * clip.pan_x_frac / zoom)
-        y_center = (1080 - crop_h) // 2 - round(1080 * clip.pan_y_frac / zoom)
-        x_offset = max(0, min(x_center, 1920 - crop_w))
-        y_offset = max(0, min(y_center, 1080 - crop_h))
-        crop_filter = f"crop={crop_w}:{crop_h}:{x_offset}:{y_offset},"
-    else:
-        crop_filter = ""
-
-    vf = f"{pts}{crop_filter}scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=24"
-
-    cmd = [
-        'ffmpeg',
-        '-ss', str(trim_start),
-        *duration_flag,
-        '-i', str(raw_path),
-        '-vf', vf,
-        '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
-        '-an', '-y', str(proc_path)
-    ]
-    result = _sp.run(cmd, capture_output=True, text=True, timeout=300)
-    if result.returncode != 0:
-        raise RuntimeError(f"Erreur traitement clip {index} : {result.stderr[-500:]}")
-    return proc_path
-
-
-def _assemble_montage(clip_paths: List[Path], clips_meta: List[MontageClip], output_path: Path) -> None:
-    """Assemble les clips traités avec leurs transitions."""
-    import subprocess as _sp
-
-    if len(clip_paths) == 1:
-        import shutil
-        shutil.copy(clip_paths[0], output_path)
-        return
-
-    utils = VideoUtils()
-    current = clip_paths[0]
-
-    for idx in range(1, len(clip_paths)):
-        next_clip   = clip_paths[idx]
-        transition  = clips_meta[idx - 1].transition_after
-        fade_dur    = clips_meta[idx - 1].transition_duration or 0.5
-        intermediate = output_path.parent / f"merged_{idx}.mp4"
-
-        if transition == "fade" and fade_dur > 0:
-            # xfade entre current et next_clip
-            from video_utils import VideoUtils as _VU
-            vu = _VU()
-            dur1 = vu.get_video_duration(str(current))
-            offset = max(0.0, dur1 - fade_dur)
-            cmd = [
-                'ffmpeg',
-                '-i', str(current),
-                '-i', str(next_clip),
-                '-filter_complex',
-                f'[0:v][1:v]xfade=transition=fade:duration={fade_dur}:offset={offset}[v]',
-                '-map', '[v]',
-                '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
-                '-an', '-y', str(intermediate)
-            ]
-            result = _sp.run(cmd, capture_output=True, text=True, timeout=300)
-            if result.returncode != 0:
-                # fallback cut
-                utils.concat_videos([str(current), str(next_clip)], str(intermediate))
-        else:
-            utils.concat_videos([str(current), str(next_clip)], str(intermediate))
-
-        current = intermediate
-
-    import shutil
-    shutil.copy(current, output_path)
+def _get_montage_agent() -> MontageAgent:
+    global _montage_agent
+    if _montage_agent is None:
+        _montage_agent = MontageAgent()
+    return _montage_agent
 
 
 def _run_montage_export(job_id: str, body: MontageExportBody):
     """Job background : traite et assemble le montage."""
     background_tasks_store[job_id]["status"] = "processing"
     try:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            work_dir    = Path(tmp_dir)
-            clip_paths  = []
+        local_path = _get_montage_agent().export(body.clips)
 
-            for index, clip in enumerate(body.clips):
-                proc_path = _process_clip(clip, index, work_dir)
-                clip_paths.append(proc_path)
-
-            output_path = work_dir / "montage_final.mp4"
-            _assemble_montage(clip_paths, body.clips, output_path)
-
-            video_url = _cloudinary_upload_with_retry(
-                str(output_path),
-                folder="rose-panama/videos/montage",
-                resource_type="video",
-            )
+        video_url = _cloudinary_upload_with_retry(
+            local_path,
+            folder="rose-panama/videos/montage",
+            resource_type="video",
+        )
 
         background_tasks_store[job_id]["status"]    = "completed"
         background_tasks_store[job_id]["video_url"] = video_url

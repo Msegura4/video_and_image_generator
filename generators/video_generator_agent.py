@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from config import KLING_MODEL, KLING_MODEL_VERSION, KLING_MODE, KLING_DEFAULT_DURATION, KLING_DEFAULT_ASPECT_RATIO
-from src.agent import Agent
+from generators.agent import Agent
 
 
 class VideoGenerator(Agent):

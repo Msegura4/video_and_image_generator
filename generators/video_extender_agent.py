@@ -5,9 +5,9 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from config import KLING_MODE, KLING_DEFAULT_DURATION
-from src.agent import Agent
-from src.video_generator_agent import VideoGenerator
-from video_utils import VideoUtils
+from generators.agent import Agent
+from generators.video_generator_agent import VideoGenerator
+from utils.video_utils import VideoUtils
 
 
 class VideoExtender(Agent):
