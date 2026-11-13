@@ -205,11 +205,7 @@ class CloudinaryManager:
                 image_info = {
                     "public_id": resource["public_id"],
                     "url": resource["secure_url"],
-                    "thumbnail": cloudinary.CloudinaryImage(resource["public_id"]).build_url(
-                        width=300,
-                        height=300,
-                        crop="fill"
-                    ),
+                    "thumbnail": resource["secure_url"].replace("/image/upload/", "/image/upload/c_fill,h_300,w_300/"),
                     "format": resource["format"],
                     "width": resource["width"],
                     "height": resource["height"],

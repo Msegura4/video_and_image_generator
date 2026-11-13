@@ -16,8 +16,16 @@ sys.path.insert(0, str(ROOT_DIR / "src"))
 from dotenv import load_dotenv
 load_dotenv(ROOT_DIR / ".env")
 
-from kling_api import KlingAPI
+from src.orchestrator import Orchestrator
 from video_utils import VideoUtils
+
+_orchestrator = None
+
+def _get_orchestrator() -> Orchestrator:
+    global _orchestrator
+    if _orchestrator is None:
+        _orchestrator = Orchestrator()
+    return _orchestrator
 
 app = FastAPI(title="ROSE PANAMA API")
 
@@ -74,30 +82,20 @@ async def image_to_video(
         image_url = utils.upload_image_with_fallback(tmp_path)
         os.unlink(tmp_path)
 
-        api = KlingAPI()
-        result = api.generate_video(
+        result = _get_orchestrator().start_video(
             prompt=prompt,
             image_url=image_url,
             duration=duration,
             aspect_ratio=aspect_ratio,
             mode=mode,
             model_version=model_version,
-            negative_prompt=negative_prompt
+            negative_prompt=negative_prompt,
         )
 
-        task_id = result.get("task_id")
-
-        if model_version == "2.5":
-            cost = 0.33 if duration == 5 else 0.66
-        elif mode == "professional":
-            cost = 0.46 if duration == 5 else 0.92
-        else:
-            cost = 0.26 if duration == 5 else 0.52
-
         return {
-            "task_id": task_id,
+            "task_id": result["task_id"],
             "status": "processing",
-            "estimated_cost": cost
+            "estimated_cost": result["estimated_cost"],
         }
 
     except Exception as e:
@@ -108,37 +106,17 @@ async def image_to_video(
 def check_task(task_id: str):
     """Vérifie le statut d'une tâche Kling (image-to-video)."""
     try:
-        api = KlingAPI()
-        status_data = api.check_status(task_id)
-        state = status_data.get("status", "unknown")
+        result = _get_orchestrator().check_video(task_id)
 
-        response = {"task_id": task_id, "status": state}
+        if result["status"] == "completed" and result.get("video_url") and _cloudinary_configured():
+            result["video_url"] = _cloudinary_upload_with_retry(
+                result["video_url"],
+                folder="rose-panama/videos/image_to_video",
+                resource_type="video",
+            )
+            print(f"[kling] Vidéo uploadée sur Cloudinary : {result['video_url']}")
 
-        if state == "completed":
-            output = status_data.get("output", {})
-            works = output.get("works", [])
-            if works:
-                video_info = works[0].get("video", {})
-                video_url = (
-                    video_info.get("resource_without_watermark")
-                    or video_info.get("resource")
-                )
-                # Upload vers Cloudinary pour persistance et affichage dans Créations
-                if video_url and _cloudinary_configured():
-                    video_url = _cloudinary_upload_with_retry(
-                        video_url,
-                        folder="rose-panama/videos/image_to_video",
-                        resource_type="video",
-                    )
-                    print(f"[kling] Vidéo uploadée sur Cloudinary : {video_url}")
-                response["video_url"] = video_url
-
-        if state == "failed":
-            error_msg = status_data.get("error") or status_data.get("message") or str(status_data)
-            print(f"[kling] Task {task_id} failed: {error_msg}")
-            response["error"] = error_msg
-
-        return response
+        return result
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -148,26 +126,23 @@ def check_task(task_id: str):
 # GÉNÉRATION D'IMAGE FLUX (PiAPI)
 # ─────────────────────────────────────────────
 
-def _run_flux_generation(job_id: str, prompt: str, model: str, width: int, height: int):
+def _run_flux_generation(job_id: str, prompt: str, width: int, height: int):
     """Tâche background pour la génération Flux (bloquante en interne)."""
     try:
         background_tasks_store[job_id]["status"] = "processing"
-        from flux_image_generator import FluxImageGenerator
-        generator = FluxImageGenerator()
-        image_path = generator.generate_image(prompt, model, width, height)
+        result = _get_orchestrator().generate_image(prompt, width, height)
 
-        # Upload vers Cloudinary pour persistance
-        image_url = None
+        image_url = result["image_url"]
         if _cloudinary_configured():
             image_url = _cloudinary_upload_with_retry(
-                str(image_path),
+                result["image_path"],
                 folder="rose-panama/images/flux",
                 resource_type="image",
             )
             print(f"[flux] Image uploadée sur Cloudinary : {image_url}")
 
         background_tasks_store[job_id]["status"] = "completed"
-        background_tasks_store[job_id]["image_path"] = str(image_path)
+        background_tasks_store[job_id]["image_path"] = result["image_path"]
         background_tasks_store[job_id]["image_url"] = image_url
     except Exception as e:
         background_tasks_store[job_id]["status"] = "failed"
@@ -178,7 +153,6 @@ def _run_flux_generation(job_id: str, prompt: str, model: str, width: int, heigh
 async def generate_image(
     background_tasks: BackgroundTasks,
     prompt: str = Form(...),
-    model: str = Form("flux-schnell"),
     width: int = Form(1024),
     height: int = Form(1024),
 ):
@@ -187,13 +161,13 @@ async def generate_image(
     background_tasks_store[job_id] = {
         "status": "pending",
         "type": "flux_image",
-        "created_at": time.time()
+        "created_at": time.time(),
     }
-    background_tasks.add_task(_run_flux_generation, job_id, prompt, model, width, height)
+    background_tasks.add_task(_run_flux_generation, job_id, prompt, width, height)
     return {
         "job_id": job_id,
         "status": "pending",
-        "estimated_cost": 0.003
+        "estimated_cost": 0.003,
     }
 
 
@@ -235,32 +209,29 @@ def _run_extend_video(job_id: str, video_path: str, continuation_prompt: Optiona
     """Tâche background pour l'extension vidéo."""
     try:
         background_tasks_store[job_id]["status"] = "processing"
-        from image_to_video_extend import ImageToVideoExtender
-        extender = ImageToVideoExtender()
-        extended_path = extender.extend_video(
+        result = _get_orchestrator().extend_video(
             video_path=video_path,
             continuation_prompt=continuation_prompt or None,
             duration=duration,
-            mode=mode
+            mode=mode,
         )
-        # Upload vers Cloudinary pour persistance
+
         video_url_out = None
         if _cloudinary_configured():
             video_url_out = _cloudinary_upload_with_retry(
-                str(extended_path),
+                result["video_path"],
                 folder="rose-panama/videos/extended",
                 resource_type="video",
             )
             print(f"[extend] Vidéo uploadée sur Cloudinary : {video_url_out}")
 
         background_tasks_store[job_id]["status"] = "completed"
-        background_tasks_store[job_id]["video_path"] = str(extended_path)
+        background_tasks_store[job_id]["video_path"] = result["video_path"]
         background_tasks_store[job_id]["video_url"] = video_url_out
     except Exception as e:
         background_tasks_store[job_id]["status"] = "failed"
         background_tasks_store[job_id]["error"] = str(e)
     finally:
-        # Nettoyer la vidéo uploadée temporairement
         tmp = background_tasks_store[job_id].get("_tmp_path")
         if tmp and Path(tmp).exists():
             Path(tmp).unlink(missing_ok=True)

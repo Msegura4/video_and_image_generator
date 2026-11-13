@@ -4,6 +4,11 @@ import Hls from 'hls.js'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+// URL valide = sur Cloudinary. Les anciens chemins locaux (/api/serve/...) sont cassés.
+function isCloudinaryUrl(url) {
+  return !!url && url.includes('cloudinary.com')
+}
+
 function getCloudinaryThumb(url) {
   if (!url?.includes('cloudinary.com')) return url
   return url.replace('/image/upload/', '/image/upload/c_fill,h_300,w_300/')
@@ -826,9 +831,9 @@ function StepImage({ step, evoId, projectId, direction, onDone }) {
           if (pd.status === 'completed') {
             clearInterval(pollRef.current)
             const lp = pd.image_path
-            const url = pd.image_url || `${API}/api/serve${lp.startsWith('/') ? lp : '/' + lp}`
-            await saveStep({ status: 'completed', local_path: lp, url, completed_at: new Date().toISOString() })
-            await addToProjectMedia(projectId, { url, resource_type: 'image', label: lp ? lp.split('/').pop() : 'image' })
+            const url = pd.image_url  // uniquement URL Cloudinary — jamais de chemin local
+            await saveStep({ status: 'completed', local_path: lp, url: url || null, completed_at: new Date().toISOString() })
+            if (url) await addToProjectMedia(projectId, { url, resource_type: 'image', label: lp ? lp.split('/').pop() : 'image' })
             setRunning(false)
           } else if (pd.status === 'failed') {
             clearInterval(pollRef.current)
@@ -846,11 +851,15 @@ function StepImage({ step, evoId, projectId, direction, onDone }) {
     await saveStep({ status: 'pending', local_path: null, url: null, job_id: null, completed_at: null })
   }
 
-  if (step.status === 'completed' && step.url) {
+  if (step.status === 'completed') {
+    const validUrl = isCloudinaryUrl(step.url) ? step.url : null
     return (
       <div>
-        <div style={{ aspectRatio: '1/1', background: 'var(--bg-3)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', marginBottom: 10, maxWidth: 200 }}>
-          <img src={step.url} alt="generated" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        <div style={{ aspectRatio: '1/1', background: 'var(--bg-3)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', marginBottom: 10, maxWidth: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {validUrl
+            ? <img src={validUrl} alt="generated" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : <span style={{ fontSize: 10, color: 'var(--text-3)', textAlign: 'center', padding: 8 }}>Non disponible sur Cloudinary</span>
+          }
         </div>
         {step.prompt && <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 8, fontStyle: 'italic' }}>"{step.prompt}"</div>}
         <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 12px', color: 'var(--accent)', borderColor: 'var(--accent)' }} onClick={reset}>
@@ -1173,9 +1182,9 @@ function StepExtend({ step, videoStep, evoId, projectId, direction, onDone }) {
           if (pd.status === 'completed') {
             clearInterval(pollRef.current)
             const lp = pd.video_path
-            const url = pd.video_url || `${API}/api/serve${lp.startsWith('/') ? lp : '/' + lp}`
-            await saveStep({ status: 'completed', url, completed_at: new Date().toISOString() })
-            await addToProjectMedia(projectId, { url, resource_type: 'video', label: lp ? lp.split('/').pop() : 'video' })
+            const url = pd.video_url  // uniquement URL Cloudinary — jamais de chemin local
+            await saveStep({ status: 'completed', url: url || null, completed_at: new Date().toISOString() })
+            if (url) await addToProjectMedia(projectId, { url, resource_type: 'video', label: lp ? lp.split('/').pop() : 'video' })
             setRunning(false)
           } else if (pd.status === 'failed') {
             clearInterval(pollRef.current)
@@ -1381,9 +1390,10 @@ function PipelineView({ evo, projectId, direction, onUpdate }) {
 
         const res1 = await pollJob(d1.job_id)
         const lp = res1.image_path
-        imageUrl = res1.image_url || `${API}/api/serve${lp.startsWith('/') ? lp : '/' + lp}`
-        await saveStep('image', { status: 'completed', local_path: lp, url: imageUrl, completed_at: new Date().toISOString() })
-        await addToProjectMedia(projectId, { url: imageUrl, resource_type: 'image', label: lp ? lp.split('/').pop() : 'image' })
+        imageUrl = res1.image_url || `${API}/api/serve${lp.startsWith('/') ? lp : '/' + lp}`  // local en mémoire pour step 2
+        const cloudUrl1 = res1.image_url  // uniquement Cloudinary pour persistance
+        await saveStep('image', { status: 'completed', local_path: lp, url: cloudUrl1 || null, completed_at: new Date().toISOString() })
+        if (cloudUrl1) await addToProjectMedia(projectId, { url: cloudUrl1, resource_type: 'image', label: lp ? lp.split('/').pop() : 'image' })
         onUpdate && onUpdate()
       }
 
@@ -1440,9 +1450,9 @@ function PipelineView({ evo, projectId, direction, onUpdate }) {
 
       const res3 = await pollJob(d3.job_id)
       const lp3 = res3.video_path
-      const extUrl = res3.video_url || `${API}/api/serve${lp3.startsWith('/') ? lp3 : '/' + lp3}`
-      await saveStep('extend', { status: 'completed', url: extUrl, completed_at: new Date().toISOString() })
-      await addToProjectMedia(projectId, { url: extUrl, resource_type: 'video', label: lp3 ? lp3.split('/').pop() : 'video' })
+      const extUrl = res3.video_url  // uniquement URL Cloudinary — jamais de chemin local
+      await saveStep('extend', { status: 'completed', url: extUrl || null, completed_at: new Date().toISOString() })
+      if (extUrl) await addToProjectMedia(projectId, { url: extUrl, resource_type: 'video', label: lp3 ? lp3.split('/').pop() : 'video' })
       onUpdate && onUpdate()
 
     } catch (e) {
@@ -1469,8 +1479,11 @@ function PipelineView({ evo, projectId, direction, onUpdate }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
           <div>
             <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Image</div>
-            <div style={{ aspectRatio: '1/1', borderRadius: 'var(--radius-sm)', overflow: 'hidden', maxWidth: 160, marginBottom: 8 }}>
-              <img src={steps.image.url} alt="img" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <div style={{ aspectRatio: '1/1', borderRadius: 'var(--radius-sm)', overflow: 'hidden', maxWidth: 160, marginBottom: 8, background: 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {isCloudinaryUrl(steps.image.url)
+                ? <img src={steps.image.url} alt="img" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : <span style={{ fontSize: 9, color: 'var(--text-3)', textAlign: 'center', padding: 8 }}>Non dispo Cloudinary</span>
+              }
             </div>
           </div>
           <div>
@@ -1546,10 +1559,13 @@ function PipelineView({ evo, projectId, direction, onUpdate }) {
             {s1 === 'completed' && <span style={{ fontSize: 9, color: 'var(--success)' }}>✓</span>}
           </div>
 
-          {s1 === 'completed' && steps.image.url ? (
+          {s1 === 'completed' ? (
             <div style={{ marginBottom: 10 }}>
-              <div style={{ aspectRatio: '1/1', borderRadius: 'var(--radius-sm)', overflow: 'hidden', maxWidth: 120, marginBottom: 6 }}>
-                <img src={steps.image.url} alt="img" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <div style={{ aspectRatio: '1/1', borderRadius: 'var(--radius-sm)', overflow: 'hidden', maxWidth: 120, marginBottom: 6, background: 'var(--bg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {isCloudinaryUrl(steps.image.url)
+                  ? <img src={steps.image.url} alt="img" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <span style={{ fontSize: 9, color: 'var(--text-3)', textAlign: 'center', padding: 6 }}>Non dispo</span>
+                }
               </div>
             </div>
           ) : (
