@@ -17,7 +17,7 @@ import signal
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-VENV_DIR = ROOT / "videogen_env"
+VENV_DIR = ROOT / "env"
 VENV_PYTHON = VENV_DIR / "bin" / "python"
 VENV_PIP = VENV_DIR / "bin" / "pip"
 API_DIR = ROOT / "api"
