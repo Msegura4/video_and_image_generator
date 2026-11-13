@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from generators.config import PIAPI_API_KEY, PIAPI_BASE_URL
+from api.config import PIAPI_API_KEY, PIAPI_BASE_URL
 
 
 class Agent:

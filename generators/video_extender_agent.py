@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from generators.config import KLING_MODE, KLING_DEFAULT_DURATION
+from api.config import KLING_MODE, KLING_DEFAULT_DURATION
 from generators.agent import Agent
 from generators.video_generator_agent import VideoGenerator
 from utils.video_utils import VideoUtils

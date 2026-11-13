@@ -6,8 +6,8 @@ AI-powered image and video generation platform. Built with FastAPI (backend) and
 
 ```
 api/                    FastAPI application (routes, background tasks)
-generators/             AI generation layer
   config.py             Model parameters and API keys
+generators/             AI generation layer
   agent.py              Base class (shared HTTP client, polling, download)
   image_generator_agent.py   FLUX image generation (via PiAPI)
   video_generator_agent.py   Kling video generation (via PiAPI)
@@ -57,7 +57,7 @@ Get your PiAPI key at piapi.ai. Cloudinary credentials are available in your Clo
 
 ## Model configuration
 
-All model parameters are centralized in `generators/config.py`. To switch models or versions, edit this file only — no other files need to change.
+All model parameters are centralized in `api/config.py`. To switch models or versions, edit this file only — no other files need to change.
 
 ```python
 KLING_MODEL_VERSION = "2.5"       # Kling version: "1.6", "2.1", "2.5"

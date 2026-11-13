@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Dict, Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from generators.config import FLUX_MODEL, FLUX_DEFAULT_WIDTH, FLUX_DEFAULT_HEIGHT
+from api.config import FLUX_MODEL, FLUX_DEFAULT_WIDTH, FLUX_DEFAULT_HEIGHT
 from generators.agent import Agent
 
 
