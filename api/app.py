@@ -216,14 +216,12 @@ def _run_extend_video(job_id: str, video_path: str, continuation_prompt: Optiona
             mode=mode,
         )
 
-        video_url_out = None
-        if _cloudinary_configured():
-            video_url_out = _cloudinary_upload_with_retry(
-                result["video_path"],
-                folder="rose-panama/videos/extended",
-                resource_type="video",
-            )
-            print(f"[extend] Vidéo uploadée sur Cloudinary : {video_url_out}")
+        video_url_out = _cloudinary_upload_with_retry(
+            result["video_path"],
+            folder="rose-panama/videos/extended",
+            resource_type="video",
+        )
+        print(f"[extend] Vidéo uploadée sur Cloudinary : {video_url_out}")
 
         background_tasks_store[job_id]["status"] = "completed"
         background_tasks_store[job_id]["video_path"] = result["video_path"]

@@ -81,7 +81,11 @@ class VideoExtender(Agent):
         return 0.16 if duration == 5 else 0.32
 
     def _build_continuation_prompt(self, video_path: Path) -> str:
-        """Construit un prompt de continuation depuis les métadonnées de la vidéo source."""
+        """Construit un prompt de continuation depuis les métadonnées de la vidéo source.
+
+        Selon les recommandations Kling : décrire ce qui se passe ensuite (la suite du mouvement),
+        pas ce qui est déjà dans l'image. Rien de nouveau n'est introduit, le mouvement continue.
+        """
         import json
         metadata_file = Path(str(video_path).replace(".mp4", "_metadata.json"))
 
@@ -93,14 +97,16 @@ class VideoExtender(Agent):
                 if original_prompt:
                     base = original_prompt.split("professional mode")[0].strip()
                     base = base.split("cinematic quality")[0].strip()
+                    base = base.rstrip(",").strip()
                     return (
-                        f"{base}, smooth continuous camera movement, "
-                        "seamless flow, maintain momentum, same lighting and atmosphere"
+                        f"continuing: {base}, "
+                        "camera advances further, nothing new introduced, "
+                        "same pace same direction same atmosphere, seamless progression"
                     )
             except Exception:
                 pass
 
         return (
-            "smooth continuous camera movement, seamless cinematic flow, "
-            "maintain the same momentum and direction, consistent lighting and atmosphere"
+            "continuing same camera movement, advancing further, "
+            "nothing new happens, same pace same direction same lighting and atmosphere"
         )

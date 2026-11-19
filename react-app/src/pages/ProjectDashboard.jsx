@@ -1182,8 +1182,8 @@ function StepExtend({ step, videoStep, evoId, projectId, direction, onDone }) {
           if (pd.status === 'completed') {
             clearInterval(pollRef.current)
             const lp = pd.video_path
-            const url = pd.video_url  // uniquement URL Cloudinary — jamais de chemin local
-            await saveStep({ status: 'completed', url: url || null, completed_at: new Date().toISOString() })
+            const url = pd.video_url  // URL Cloudinary (prod) ou null (local)
+            await saveStep({ status: 'completed', url: url || null, local_path: lp || null, completed_at: new Date().toISOString() })
             if (url) await addToProjectMedia(projectId, { url, resource_type: 'video', label: lp ? lp.split('/').pop() : 'video' })
             setRunning(false)
           } else if (pd.status === 'failed') {
@@ -1202,10 +1202,11 @@ function StepExtend({ step, videoStep, evoId, projectId, direction, onDone }) {
     await saveStep({ status: 'pending', job_id: null, url: null, completed_at: null })
   }
 
-  if (step.status === 'completed' && step.url) {
+  if (step.status === 'completed' && (step.url || step.local_path)) {
+    const videoSrc = step.url || `${API}/api/serve/${step.local_path.replace(/^\//, '')}`
     return (
       <div>
-        <VideoPlayer src={step.url} controls style={{ width: '100%', maxWidth: 240, borderRadius: 'var(--radius-sm)', marginBottom: 10, display: 'block' }} />
+        <VideoPlayer src={videoSrc} controls style={{ width: '100%', maxWidth: 240, borderRadius: 'var(--radius-sm)', marginBottom: 10, display: 'block' }} />
         {step.prompt && <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 8, fontStyle: 'italic' }}>"{step.prompt}"</div>}
         <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 12px', color: 'var(--accent)', borderColor: 'var(--accent)' }} onClick={reset}>
           Regénérer
@@ -1218,7 +1219,10 @@ function StepExtend({ step, videoStep, evoId, projectId, direction, onDone }) {
     return (
       <div>
         <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 10 }}>Extension en cours… (1–3 min)</div>
-        <div className="progress-track" style={{ maxWidth: 160 }}><div className="progress-fill indeterminate" /></div>
+        <div className="progress-track" style={{ maxWidth: 160, marginBottom: 12 }}><div className="progress-fill indeterminate" /></div>
+        <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 12px', color: 'var(--text-3)' }} onClick={reset}>
+          Annuler
+        </button>
       </div>
     )
   }
