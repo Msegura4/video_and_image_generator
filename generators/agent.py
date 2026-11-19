@@ -54,7 +54,7 @@ class Agent:
             response = requests.get(
                 f"{self.base_url}/task/{task_id}",
                 headers=self.headers,
-                timeout=10,
+                timeout=30,
             )
             response.raise_for_status()
             result = response.json()

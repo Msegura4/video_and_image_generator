@@ -11,9 +11,9 @@ PIAPI_BASE_URL = "https://api.piapi.ai/api/v1"
 
 # ── Kling (vidéo) ─────────────────────────────
 KLING_MODEL = "kling"
-KLING_MODEL_VERSION = "2.5"
+KLING_MODEL_VERSION = "4.0"
 KLING_MODE = "professional"          # "professional" | "standard"
-KLING_DEFAULT_DURATION = 5           # secondes (5 ou 10)
+KLING_DEFAULT_DURATION = 5           # secondes (3 à 30 avec Kling 4.0)
 KLING_DEFAULT_ASPECT_RATIO = "16:9"
 
 # ── FLUX (image) ──────────────────────────────
