@@ -221,6 +221,7 @@ function ImageCard({ image, onDelete, projects }) {
             src={image.thumbnail || image.url}
             alt={image.filename}
             style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            onError={e => { if (e.target.src !== image.url) e.target.src = image.url }}
           />
         </div>
         <div style={{ padding: '12px 14px' }}>
