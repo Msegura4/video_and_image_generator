@@ -29,6 +29,7 @@ class VideoExtender(Agent):
         continuation_prompt: Optional[str] = None,
         duration: int = KLING_DEFAULT_DURATION,
         mode: str = KLING_MODE,
+        output_filename: Optional[str] = None,
     ) -> str:
         """Étend une vidéo et retourne le chemin de la vidéo finale."""
         source = Path(video_path)
@@ -61,7 +62,8 @@ class VideoExtender(Agent):
         self._download_file(continuation_url, str(continuation_path))
 
         # Étape 5 : concaténer original + continuation
-        output_path = Path("outputs") / f"extended_{source.stem}_{int(time.time())}.mp4"
+        filename = output_filename or f"extended_{source.stem}_{int(time.time())}.mp4"
+        output_path = Path("outputs") / filename
         final_path = self.utils.concat_videos(
             [str(source), str(continuation_path)],
             str(output_path),
