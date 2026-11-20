@@ -1169,6 +1169,8 @@ function StepExtend({ step, videoStep, evoId, projectId, direction, onDone }) {
       if (extFinalPrompt) body.append('continuation_prompt', extFinalPrompt)
       body.append('duration', duration)
       body.append('mode', mode)
+      if (projectId) body.append('project_id', projectId)
+      if (evoId) body.append('evo_id', evoId)
 
       const r = await fetch(`${API}/api/extend-video`, { method: 'POST', body })
       const d = await r.json()
@@ -1446,6 +1448,8 @@ function PipelineView({ evo, projectId, direction, onUpdate }) {
       if (extFinalPrompt) body3.append('continuation_prompt', extFinalPrompt)
       body3.append('duration', extDuration)
       body3.append('mode', extMode)
+      if (projectId) body3.append('project_id', projectId)
+      if (evo?.id) body3.append('evo_id', evo.id)
 
       const r3 = await fetch(`${API}/api/extend-video`, { method: 'POST', body: body3 })
       const d3 = await r3.json()

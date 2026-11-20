@@ -107,6 +107,7 @@ class Orchestrator(Agent):
         continuation_prompt: Optional[str] = None,
         duration: int = 5,
         mode: str = "professional",
+        output_filename: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Lance et attend l'extension d'une vidéo. Retourne chemin et coût."""
         final_path = self.video_ext.extend(
@@ -114,6 +115,7 @@ class Orchestrator(Agent):
             continuation_prompt=continuation_prompt,
             duration=duration,
             mode=mode,
+            output_filename=output_filename,
         )
         return {
             "video_path": final_path,

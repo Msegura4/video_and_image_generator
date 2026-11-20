@@ -205,15 +205,27 @@ def check_job(job_id: str):
 # ─────────────────────────────────────────────
 
 def _run_extend_video(job_id: str, video_path: str, continuation_prompt: Optional[str],
-                      duration: int, mode: str):
+                      duration: int, mode: str,
+                      project_id: Optional[str] = None, evo_id: Optional[str] = None):
     """Tâche background pour l'extension vidéo."""
     try:
         background_tasks_store[job_id]["status"] = "processing"
+
+        clip_index = None
+        output_filename = None
+        if project_id and evo_id:
+            proj_data = _load_projects()
+            project = proj_data["projects"].get(project_id, {})
+            slug = _slugify(project.get("name", project_id))
+            clip_index = _next_clip_index(project_id, evo_id)
+            output_filename = f"{slug}_{clip_index:02d}_ext_{evo_id}.mp4"
+
         result = _get_orchestrator().extend_video(
             video_path=video_path,
             continuation_prompt=continuation_prompt or None,
             duration=duration,
             mode=mode,
+            output_filename=output_filename,
         )
 
         video_url_out = _cloudinary_upload_with_retry(
@@ -226,6 +238,18 @@ def _run_extend_video(job_id: str, video_path: str, continuation_prompt: Optiona
         background_tasks_store[job_id]["status"] = "completed"
         background_tasks_store[job_id]["video_path"] = result["video_path"]
         background_tasks_store[job_id]["video_url"] = video_url_out
+
+        if project_id and evo_id and clip_index is not None:
+            _append_clip(project_id, evo_id, {
+                "id": f"clip_{clip_index:02d}",
+                "type": "ext",
+                "url": video_url_out,
+                "local_path": result["video_path"],
+                "prompt": continuation_prompt or "",
+                "parent_clip_id": None,
+                "created_at": _dt.utcnow().isoformat(),
+            })
+
     except Exception as e:
         background_tasks_store[job_id]["status"] = "failed"
         background_tasks_store[job_id]["error"] = str(e)
@@ -243,6 +267,8 @@ async def extend_video(
     continuation_prompt: Optional[str] = Form(None),
     duration: int = Form(5),
     mode: str = Form("professional"),
+    project_id: Optional[str] = Form(None),
+    evo_id: Optional[str] = Form(None),
 ):
     """
     Étend une vidéo via image-to-video chain.
@@ -282,7 +308,7 @@ async def extend_video(
     }
     background_tasks.add_task(
         _run_extend_video, job_id, str(tmp_path),
-        continuation_prompt, duration, mode
+        continuation_prompt, duration, mode, project_id, evo_id
     )
 
     return {
@@ -864,6 +890,41 @@ def _default_steps():
     }
 
 
+import re as _re
+
+def _slugify(name: str) -> str:
+    slug = name.lower().strip()
+    slug = _re.sub(r'[^\w\s]', '', slug)
+    slug = _re.sub(r'[\s_]+', '_', slug)
+    return slug[:20].strip('_')
+
+
+def _next_clip_index(project_id: str, evo_id: str) -> int:
+    data = _load_projects()
+    evo = _get_evo(data, project_id, evo_id)
+    if not evo:
+        return 1
+    return len(evo.get("clips", [])) + 1
+
+
+def _get_evo(data: dict, project_id: str, evo_id: str):
+    project = data["projects"].get(project_id)
+    if not project:
+        return None
+    return next((e for e in project["evolutions"] if e["id"] == evo_id), None)
+
+
+def _append_clip(project_id: str, evo_id: str, clip: dict):
+    data = _load_projects()
+    evo = _get_evo(data, project_id, evo_id)
+    if not evo:
+        return
+    if "clips" not in evo:
+        evo["clips"] = []
+    evo["clips"].append(clip)
+    _save_projects(data)
+
+
 class ProjectDirection(BaseModel):
     colorimetry:            str = ""
     ambiance:               str = ""
@@ -990,6 +1051,7 @@ def create_evolution(project_id: str, body: EvolutionCreate = None):
         "mode":       body.mode,
         "created_at": _dt.utcnow().isoformat(),
         "steps":      _default_steps(),
+        "clips":      [],
     }
     data["projects"][project_id]["evolutions"].insert(0, evo)
     _save_projects(data)
@@ -1020,6 +1082,24 @@ def patch_step(project_id: str, evo_id: str, step: str, body: StepPatch):
         raise HTTPException(status_code=404, detail="Évolution introuvable.")
     patch = body.dict(exclude_none=True)
     evo["steps"][step].update(patch)
+
+    if step == "img2video" and patch.get("status") == "completed" and patch.get("url"):
+        if "clips" not in evo:
+            evo["clips"] = []
+        clip_index = len(evo["clips"]) + 1
+        proj_data = data["projects"].get(project_id, {})
+        slug = _slugify(proj_data.get("name", project_id))
+        evo["clips"].append({
+            "id": f"clip_{clip_index:02d}",
+            "type": "gen",
+            "url": patch["url"],
+            "local_path": patch.get("local_path"),
+            "filename": f"{slug}_{clip_index:02d}_gen_{evo_id}.mp4",
+            "prompt": patch.get("prompt") or evo["steps"]["img2video"].get("prompt") or "",
+            "parent_clip_id": None,
+            "created_at": _dt.utcnow().isoformat(),
+        })
+
     _save_projects(data)
     return evo
 
